@@ -1,0 +1,19 @@
+# Compiled Java / Maven / Gradle output
+target/
+build/
+*.class
+*.jar
+*.war
+
+# IDE & Editor folders
+.idea/
+*.iml
+.vscode/
+
+# OS-generated files
+Thumbs.db
+.DS_Store
+
+# Local environment / logs (good practice)
+*.log
+.env

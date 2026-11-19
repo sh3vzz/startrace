@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StarTrace — Interplanetary Navigation & Mission Command</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Cinematic Space Boot Intro Overlay -->
+<div id="bootOverlay" class="boot-overlay">
+    <div class="boot-astrolabe">
+        <div class="ring ring-outer"></div>
+        <div class="ring ring-middle"></div>
+        <div class="ring ring-inner"></div>
+        <div class="sun-core"></div>
+    </div>
+    <h1 class="boot-title">STARTRACE</h1>
+    <p class="boot-subtitle">INTERPLANETARY NAVIGATION &amp; ORBITAL PATHFINDING ENGINE</p>
+    <div class="boot-progress-bar">
+        <div id="bootProgressFill" class="boot-progress-fill"></div>
+    </div>
+    <span id="bootStatusText" class="boot-status">CALIBRATING SOLAR EPHEMERIS &amp; GRAPH TELEMETRY...</span>
+</div>
+
+<div class="app-container">
+    <!-- Main 3D-Parallax Space Visualizer Canvas -->
+    <div class="canvas-container">
+        <div class="canvas-header">
+            <div class="title-cluster">
+                <h2>SOLAR SECTOR TELEMETRY</h2>
+                <span id="simClockBadge" class="clock-badge">EPOCH: DAY 000 | LIVE ORBITS</span>
+            </div>
+            <div class="legend">
+                <button id="btnToggleOrbits" class="hud-pill active" title="Toggle Orbital Tracks">ORBITS: ON</button>
+                <button id="btnToggleMST" class="hud-pill" title="Highlight Kruskal's Minimum Spanning Tree Comms Backbone">RELAY MST: OFF</button>
+                <button id="btnResetView" class="hud-pill">RESET CAMERA</button>
+                <span class="legend-item"><span class="dot refuel"></span> Refuel Depot</span>
+                <span class="legend-item"><span class="dot active"></span> Active Corridor</span>
+                <span class="legend-item"><span class="dot storm"></span> Solar Hazard</span>
+            </div>
+        </div>
+
+        <!-- Ship Status Floating Pill (Top-Left below Header) -->
+        <div class="ship-hud-pill">
+            <div class="hud-stat">
+                <span class="hud-lbl">MAX FUEL TANK</span>
+                <span id="hudFuelCap" class="hud-val">600 t</span>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-stat">
+                <span class="hud-lbl">RAD SHIELDING</span>
+                <span id="hudShieldBonus" class="hud-val">0%</span>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-stat">
+                <span class="hud-lbl">TIP</span>
+                <span class="hud-tip">Click any Planet for Command Deck &bull; Click any Lane to trigger Space Weather</span>
+            </div>
+        </div>
+
+        <canvas id="galaxyCanvas"></canvas>
+    </div>
+
+    <!-- Collapsible Sidebar Wrapper -->
+    <div id="sidebarWrapper" class="sidebar-wrapper">
+        <button id="btnToggleSidebar" class="sidebar-toggle-tab" title="Minimize / Expand Mission Control">
+            <span id="toggleArrow">&#9654;</span>
+        </button>
+
+        <aside class="control-panel">
+            <header>
+                <h1>STARTRACE</h1>
+                <p>Deep-Space Route, Fuel &amp; Signal Optimizer</p>
+            </header>
+
+            <!-- Navigation Tabs -->
+            <nav class="panel-tabs">
+                <button class="tab-btn active" data-tab="tabNav">NAVIGATION</button>
+                <button class="tab-btn" data-tab="tabOps">TOUR &amp; WEATHER</button>
+                <button class="tab-btn" data-tab="tabLogs">LEADERBOARD</button>
+            </nav>
+
+            <!-- TAB 1: Core Single & Fuel-Constrained Routing -->
+            <div id="tabNav" class="tab-content active">
+                <div class="input-box">
+                    <label for="startPlanet">ORIGIN STATION</label>
+                    <select id="startPlanet">
+                        <option value="">Loading solar nodes...</option>
+                    </select>
+                </div>
+
+                <div class="input-box">
+                    <label for="destPlanet">DESTINATION STATION</label>
+                    <select id="destPlanet">
+                        <option value="">Loading solar nodes...</option>
+                    </select>
+                </div>
+
+                <div class="input-row-2col">
+                    <div class="input-box">
+                        <label for="routeMode">ALGORITHM MODE</label>
+                        <select id="routeMode">
+                            <option value="BALANCED">BALANCED (Optimal)</option>
+                            <option value="FASTEST">FASTEST (Min Mkm)</option>
+                            <option value="SAFEST">SAFEST (Min mSv)</option>
+                        </select>
+                    </div>
+                    <div class="input-box">
+                        <label for="fuelTankInput">FUEL CAPACITY (t)</label>
+                        <input type="number" id="fuelTankInput" value="600" min="100" max="3000" step="50">
+                    </div>
+                </div>
+
+                <button id="btnCalculate" class="btn-glow">COMPUTE OPTIMAL ROUTE</button>
+
+                <!-- Telemetry Metrics Grid -->
+                <div class="metrics-section">
+                    <h3>MISSION TELEMETRY</h3>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <span class="metric-label">DISTANCE</span>
+                            <span id="metricDistance" class="metric-value">-- Mkm</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">DURATION</span>
+                            <span id="metricDuration" class="metric-value">-- d -- h</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">PROPELLANT</span>
+                            <span id="metricFuel" class="metric-value">-- t</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">RADIATION</span>
+                            <span id="metricHazard" class="metric-value">-- mSv</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">SIGNAL DELAY</span>
+                            <span id="metricLatency" class="metric-value">-- min</span>
+                        </div>
+                        <div class="metric-card highlight-cost">
+                            <span class="metric-label">MISSION BUDGET</span>
+                            <span id="metricCost" class="metric-value">$ --</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Flight Itinerary -->
+                <h3>FLIGHT ITINERARY &amp; REFUEL STOPS</h3>
+                <div class="itinerary-box">
+                    <ul id="itineraryList">
+                        <li class="empty-msg">Select origin and destination to compute trajectory.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- TAB 2: Multi-Stop Cargo Tour, Space Weather & Undo Stack -->
+            <div id="tabOps" class="tab-content">
+                <h3>MULTI-STOP CARGO TOUR (TSP HEURISTIC)</h3>
+                <p class="helper-text">Select multiple colonies to optimize a multi-stop supply tour:</p>
+                <div id="waypointCheckboxes" class="waypoint-grid">
+                    <!-- Populated dynamically with planet checkboxes -->
+                </div>
+                <button id="btnComputeTour" class="btn-glow secondary">OPTIMIZE MULTI-STOP TOUR</button>
+
+                <div class="divider-line"></div>
+
+                <h3>SPACE WEATHER &amp; UNDO STACK (LIFO)</h3>
+                <p class="helper-text">Trigger a live solar storm on a corridor or click any space lane directly on the map:</p>
+                <div class="input-box">
+                    <label for="hazardEdgeSelect">TARGET SPACE CORRIDOR</label>
+                    <select id="hazardEdgeSelect">
+                        <option value="">Loading corridors...</option>
+                    </select>
+                </div>
+                <div class="btn-row-2col">
+                    <button id="btnTriggerStorm" class="btn-danger">TRIGGER SOLAR STORM</button>
+                    <button id="btnUndoHazard" class="btn-undo">UNDO (<span id="undoCount">0</span>)</button>
+                </div>
+            </div>
+
+            <!-- TAB 3: BST Mission Efficiency Leaderboard -->
+            <div id="tabLogs" class="tab-content">
+                <div class="leaderboard-header">
+                    <h3>MISSION EFFICIENCY LOG (BST)</h3>
+                    <button id="btnRefreshLogs" class="mini-btn">REFRESH</button>
+                </div>
+                <p class="helper-text">Sorted automatically via Binary Search Tree from lowest budget ($) to highest:</p>
+                <div id="leaderboardList" class="leaderboard-box">
+                    <p class="empty-msg">No missions logged yet. Compute a route to record telemetry.</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- Full-Height Slide-Over Planetary Command Deck -->
+<div id="planetCommandDeck" class="command-deck hidden">
+    <div class="deck-backdrop" id="deckBackdrop"></div>
+    <div class="deck-panel">
+        <button id="closeCommandDeck" class="deck-close-btn" title="Return to Solar Sector Map">&times;</button>
+
+        <div class="deck-top-bar">
+            <div class="deck-title-group">
+                <span id="deckSectorBadge" class="sector-badge">INNER SYSTEM</span>
+                <h2 id="deckPlanetName">EARTH (SOL PRIME)</h2>
+                <span id="deckPlanetId" class="id-chip">P3</span>
+            </div>
+            <div class="deck-quick-actions">
+                <button id="btnSetOrigin" class="action-chip origin">SET AS ORIGIN</button>
+                <button id="btnSetDest" class="action-chip dest">SET AS DESTINATION</button>
+            </div>
+        </div>
+
+        <div class="deck-grid">
+            <!-- Left Column: High-Res 3D-Shaded Planetary Viewport -->
+            <div class="deck-visual-col">
+                <div class="planet-viewport">
+                    <canvas id="planetDetailCanvas" width="380" height="280"></canvas>
+                    <div class="viewport-hud-tl">ORBITAL LIVE FEED // 60 FPS</div>
+                    <div id="deckRefuelTag" class="viewport-hud-br">PROPELLANT DEPOT ACTIVE</div>
+                </div>
+                <p id="deckPlanetDesc" class="planet-description">
+                    Primary humanity headquarters, orbital shipyard, and deep-space propellant refinery.
+                </p>
+            </div>
+
+            <!-- Right Column: Telemetry, Active Lanes & Interactive Ship Supplies -->
+            <div class="deck-data-col">
+                <h3>PLANETARY TELEMETRY</h3>
+                <div class="deck-stats-grid">
+                    <div class="d-stat">
+                        <span class="d-lbl">ORBITAL RADIUS</span>
+                        <span id="deckOrbitDist" class="d-val">149.6 Mkm</span>
+                    </div>
+                    <div class="d-stat">
+                        <span class="d-lbl">ATMOSPHERE</span>
+                        <span id="deckAtmo" class="d-val">Nitrogen-Oxygen</span>
+                    </div>
+                    <div class="d-stat">
+                        <span class="d-lbl">REFUEL RATE</span>
+                        <span id="deckRefuelPrice" class="d-val">$450 / ton</span>
+                    </div>
+                    <div class="d-stat">
+                        <span class="d-lbl">CONNECTED LANES</span>
+                        <span id="deckLaneCount" class="d-val">3 Corridors</span>
+                    </div>
+                </div>
+
+                <h3>STATION SUPPLIES &amp; SPACECRAFT UPGRADES</h3>
+                <p class="helper-text">Equip upgrades to immediately enhance your spacecraft for route calculations:</p>
+                <div id="deckSuppliesContainer" class="deck-supplies-grid">
+                    <!-- Populated dynamically with interactive purchase/equip cards -->
+                </div>
+
+                <h3>CONNECTED SPACE CORRIDORS</h3>
+                <div id="deckCorridorsList" class="deck-corridors-list">
+                    <!-- Lists outgoing edges & live status -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="app.js?v=2026"></script>
+</body>
+</html>

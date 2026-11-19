@@ -13,8 +13,12 @@ body {
     user-select: none;
 }
 
+.hidden {
+    display: none !important;
+}
+
 /* ==========================================================================
-   Cinematic Boot Intro Overlay
+   Cinematic Boot Intro Overlay (GPU-Composited)
    ========================================================================== */
 .boot-overlay {
     position: fixed;
@@ -25,12 +29,13 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    transition: opacity 0.9s ease, transform 0.9s ease;
+    will-change: opacity, transform;
+    transition: opacity 0.65s ease, transform 0.65s ease;
 }
 
 .boot-overlay.fade-out {
     opacity: 0;
-    transform: scale(1.06);
+    transform: scale(1.04);
     pointer-events: none;
 }
 
@@ -48,6 +53,7 @@ body {
     position: absolute;
     border-radius: 50%;
     border: 1.5px solid rgba(56, 189, 248, 0.5);
+    will-change: transform;
 }
 
 .ring-outer {
@@ -55,7 +61,7 @@ body {
     height: 140px;
     border-top-color: #38bdf8;
     border-bottom-color: transparent;
-    animation: spinCW 3s linear infinite;
+    animation: spinCW 2.4s linear infinite;
 }
 
 .ring-middle {
@@ -63,7 +69,7 @@ body {
     height: 102px;
     border-left-color: #38ef7d;
     border-right-color: transparent;
-    animation: spinCCW 2.2s linear infinite;
+    animation: spinCCW 1.8s linear infinite;
 }
 
 .ring-inner {
@@ -71,7 +77,7 @@ body {
     height: 64px;
     border-style: dashed;
     border-color: #facc15;
-    animation: spinCW 4s linear infinite;
+    animation: spinCW 3.2s linear infinite;
 }
 
 .sun-core {
@@ -79,7 +85,7 @@ body {
     height: 22px;
     border-radius: 50%;
     background: radial-gradient(circle, #fef08a 0%, #f59e0b 70%, #ea580c 100%);
-    box-shadow: 0 0 25px #f59e0b, 0 0 50px rgba(245, 158, 11, 0.6);
+    box-shadow: 0 0 22px #f59e0b;
 }
 
 @keyframes spinCW { 100% { transform: rotate(360deg); } }
@@ -91,12 +97,12 @@ body {
     font-weight: 900;
     letter-spacing: 12px;
     color: #ffffff;
-    text-shadow: 0 0 25px rgba(56, 189, 248, 0.9);
-    animation: titleExpand 1.4s ease-out forwards;
+    text-shadow: 0 0 20px rgba(56, 189, 248, 0.8);
+    animation: titleExpand 0.9s ease-out forwards;
 }
 
 @keyframes titleExpand {
-    from { letter-spacing: 2px; opacity: 0; }
+    from { letter-spacing: 3px; opacity: 0; }
     to { letter-spacing: 12px; opacity: 1; }
 }
 
@@ -111,7 +117,7 @@ body {
 .boot-progress-bar {
     width: 320px;
     height: 4px;
-    background: rgba(30, 41, 59, 0.8);
+    background: rgba(30, 41, 59, 0.85);
     border-radius: 4px;
     margin-top: 26px;
     overflow: hidden;
@@ -122,7 +128,7 @@ body {
     width: 0%;
     height: 100%;
     background: linear-gradient(90deg, #0284c7, #38bdf8, #38ef7d);
-    transition: width 0.25s ease;
+    transition: width 0.22s ease;
 }
 
 .boot-status {
@@ -169,7 +175,7 @@ body {
     flex-wrap: wrap;
     gap: 12px;
     pointer-events: none;
-    transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body.sidebar-collapsed .canvas-header {
@@ -187,11 +193,11 @@ body.sidebar-collapsed .canvas-header {
     font-size: 1.05rem;
     letter-spacing: 2px;
     color: #38bdf8;
-    text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+    text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
 }
 
 .clock-badge {
-    background: rgba(15, 23, 42, 0.8);
+    background: rgba(12, 19, 36, 0.92);
     border: 1px solid rgba(56, 189, 248, 0.35);
     color: #cbd5e1;
     font-family: monospace;
@@ -209,7 +215,7 @@ body.sidebar-collapsed .canvas-header {
 }
 
 .hud-pill {
-    background: rgba(15, 23, 42, 0.85);
+    background: rgba(12, 19, 36, 0.92);
     border: 1px solid rgba(56, 189, 248, 0.4);
     color: #94a3b8;
     padding: 5px 10px;
@@ -219,14 +225,13 @@ body.sidebar-collapsed .canvas-header {
     font-weight: 600;
     letter-spacing: 0.8px;
     cursor: pointer;
-    transition: all 0.25s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .hud-pill:hover, .hud-pill.active {
-    background: rgba(56, 189, 248, 0.2);
+    background: rgba(56, 189, 248, 0.22);
     border-color: #38bdf8;
     color: #ffffff;
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
 }
 
 .legend-item {
@@ -242,9 +247,9 @@ body.sidebar-collapsed .canvas-header {
     height: 8px;
     border-radius: 50%;
 }
-.dot.refuel { background: #38ef7d; box-shadow: 0 0 6px #38ef7d; }
-.dot.active { background: #00f0ff; box-shadow: 0 0 8px #00f0ff; }
-.dot.storm  { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.dot.refuel { background: #38ef7d; }
+.dot.active { background: #00f0ff; }
+.dot.storm  { background: #ef4444; }
 
 /* Floating Ship Status Pill */
 .ship-hud-pill {
@@ -255,12 +260,11 @@ body.sidebar-collapsed .canvas-header {
     display: flex;
     align-items: center;
     gap: 14px;
-    background: rgba(9, 14, 28, 0.85);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(56, 189, 248, 0.3);
+    background: rgba(9, 14, 28, 0.94);
+    border: 1px solid rgba(56, 189, 248, 0.32);
     padding: 8px 16px;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
 }
 
 .hud-stat {
@@ -293,6 +297,26 @@ body.sidebar-collapsed .canvas-header {
     background: rgba(148, 163, 184, 0.2);
 }
 
+.hud-cockpit-btn {
+    background: linear-gradient(135deg, #06b6d4 0%, #10b981 100%);
+    border: 1px solid #a7f3d0;
+    color: #02040a;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 0 14px rgba(56, 239, 125, 0.4);
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.hud-cockpit-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 20px rgba(56, 239, 125, 0.75);
+}
+
 /* ==========================================================================
    Collapsible Right Mission Control Sidebar
    ========================================================================== */
@@ -304,7 +328,8 @@ body.sidebar-collapsed .canvas-header {
     width: 400px;
     z-index: 30;
     display: flex;
-    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body.sidebar-collapsed .sidebar-wrapper {
@@ -318,7 +343,7 @@ body.sidebar-collapsed .sidebar-wrapper {
     transform: translateY(-50%);
     width: 32px;
     height: 76px;
-    background: rgba(15, 23, 42, 0.92);
+    background: rgba(12, 19, 36, 0.96);
     border: 1px solid rgba(56, 189, 248, 0.45);
     border-right: none;
     border-radius: 8px 0 0 8px;
@@ -328,7 +353,7 @@ body.sidebar-collapsed .sidebar-wrapper {
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: -4px 0 15px rgba(0, 0, 0, 0.5);
+    box-shadow: -4px 0 14px rgba(0, 0, 0, 0.5);
     transition: background 0.2s ease, color 0.2s ease;
 }
 
@@ -340,15 +365,14 @@ body.sidebar-collapsed .sidebar-wrapper {
 .control-panel {
     width: 100%;
     height: 100%;
-    background: rgba(10, 16, 30, 0.90);
-    backdrop-filter: blur(14px);
+    background: rgba(9, 14, 28, 0.96);
     border-left: 1px solid rgba(56, 189, 248, 0.28);
     padding: 20px 22px;
     display: flex;
     flex-direction: column;
     gap: 14px;
     overflow-y: auto;
-    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.65);
+    box-shadow: -8px 0 28px rgba(0, 0, 0, 0.7);
 }
 
 header h1 {
@@ -357,7 +381,6 @@ header h1 {
     font-weight: 800;
     color: #38bdf8;
     letter-spacing: 3px;
-    text-shadow: 0 0 14px rgba(56, 189, 248, 0.6);
 }
 
 header p {
@@ -371,7 +394,7 @@ header p {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 6px;
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.95);
     padding: 4px;
     border-radius: 6px;
     border: 1px solid rgba(56, 189, 248, 0.2);
@@ -388,13 +411,12 @@ header p {
     padding: 8px 4px;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
 .tab-btn.active {
     background: rgba(56, 189, 248, 0.22);
     color: #ffffff;
-    box-shadow: inset 0 0 8px rgba(56, 189, 248, 0.35);
 }
 
 .tab-content {
@@ -443,7 +465,7 @@ h3 {
 
 select, input[type="number"] {
     width: 100%;
-    background: rgba(30, 41, 59, 0.78);
+    background: rgba(24, 34, 52, 0.92);
     border: 1px solid rgba(56, 189, 248, 0.3);
     color: #f8fafc;
     padding: 9px 10px;
@@ -452,12 +474,11 @@ select, input[type="number"] {
     font-size: 0.92rem;
     font-weight: 600;
     outline: none;
-    transition: all 0.25s ease;
+    transition: border-color 0.2s ease;
 }
 
 select:focus, input[type="number"]:focus {
     border-color: #38bdf8;
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
 }
 
 .btn-glow {
@@ -472,24 +493,43 @@ select:focus, input[type="number"]:focus {
     font-size: 0.8rem;
     letter-spacing: 1.4px;
     cursor: pointer;
-    transition: all 0.25s ease;
-    box-shadow: 0 0 15px rgba(2, 132, 199, 0.45);
+    transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .btn-glow:hover {
     background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
-    box-shadow: 0 0 22px rgba(56, 189, 248, 0.75);
     transform: translateY(-1px);
 }
 
 .btn-glow.secondary {
     background: linear-gradient(135deg, #059669 0%, #047857 100%);
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.35);
+}
+
+.btn-cockpit {
+    width: 100%;
+    padding: 11px;
+    background: linear-gradient(135deg, #0891b2 0%, #10b981 100%);
+    border: 1px solid #6ee7b7;
+    border-radius: 6px;
+    color: #02040a;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 0.78rem;
+    letter-spacing: 1.2px;
+    cursor: pointer;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.btn-cockpit:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 0 22px rgba(56, 239, 125, 0.65);
 }
 
 .btn-danger {
     padding: 10px 8px;
-    background: rgba(220, 38, 38, 0.85);
+    background: rgba(220, 38, 38, 0.88);
     border: 1px solid #f87171;
     border-radius: 6px;
     color: #ffffff;
@@ -497,17 +537,15 @@ select:focus, input[type="number"]:focus {
     font-size: 0.68rem;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s ease;
 }
 
 .btn-danger:hover {
     background: #ef4444;
-    box-shadow: 0 0 14px rgba(239, 68, 68, 0.6);
 }
 
 .btn-undo {
     padding: 10px 8px;
-    background: rgba(30, 41, 59, 0.9);
+    background: rgba(24, 34, 52, 0.95);
     border: 1px solid #38bdf8;
     border-radius: 6px;
     color: #38bdf8;
@@ -515,7 +553,6 @@ select:focus, input[type="number"]:focus {
     font-size: 0.68rem;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s ease;
 }
 
 .btn-undo:hover {
@@ -523,7 +560,7 @@ select:focus, input[type="number"]:focus {
     color: #ffffff;
 }
 
-/* Metrics Grid (6 Realistic Telemetry Cards) */
+/* Metrics Grid */
 .metrics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -532,7 +569,7 @@ select:focus, input[type="number"]:focus {
 }
 
 .metric-card {
-    background: rgba(30, 41, 59, 0.55);
+    background: rgba(24, 34, 52, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.06);
     padding: 8px 10px;
     border-radius: 6px;
@@ -542,7 +579,7 @@ select:focus, input[type="number"]:focus {
 
 .metric-card.highlight-cost {
     border-color: rgba(56, 239, 125, 0.35);
-    background: rgba(16, 185, 129, 0.08);
+    background: rgba(16, 185, 129, 0.1);
 }
 
 .metric-label {
@@ -560,7 +597,7 @@ select:focus, input[type="number"]:focus {
 
 /* Itinerary & Waypoints */
 .itinerary-box {
-    background: rgba(15, 23, 42, 0.5);
+    background: rgba(15, 23, 42, 0.65);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 6px;
     max-height: 210px;
@@ -585,7 +622,7 @@ select:focus, input[type="number"]:focus {
     max-height: 185px;
     overflow-y: auto;
     padding: 6px;
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(15, 23, 42, 0.75);
     border-radius: 6px;
     border: 1px solid rgba(56, 189, 248, 0.2);
 }
@@ -638,7 +675,7 @@ select:focus, input[type="number"]:focus {
 }
 
 .bst-card {
-    background: rgba(30, 41, 59, 0.65);
+    background: rgba(24, 34, 52, 0.78);
     border-left: 3px solid #38ef7d;
     padding: 8px 10px;
     border-radius: 5px;
@@ -675,19 +712,13 @@ select:focus, input[type="number"]:focus {
     display: flex;
     justify-content: center;
     align-items: center;
-    transition: opacity 0.35s ease;
-}
-
-.command-deck.hidden {
-    opacity: 0;
-    pointer-events: none;
+    transition: opacity 0.25s ease;
 }
 
 .deck-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(2, 4, 10, 0.82);
-    backdrop-filter: blur(8px);
+    background: rgba(2, 4, 10, 0.88);
 }
 
 .deck-panel {
@@ -696,24 +727,21 @@ select:focus, input[type="number"]:focus {
     max-width: 1020px;
     max-height: 88vh;
     overflow-y: auto;
-    background: linear-gradient(145deg, rgba(11, 18, 34, 0.96) 0%, rgba(6, 10, 20, 0.98) 100%);
+    background: linear-gradient(145deg, #0b1222 0%, #060a14 100%);
     border: 1px solid rgba(56, 189, 248, 0.45);
-    box-shadow: 0 0 50px rgba(0, 240, 255, 0.22);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.85);
     border-radius: 12px;
     padding: 26px 30px;
+    will-change: transform;
     transform: translateY(0) scale(1);
-    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.command-deck.hidden .deck-panel {
-    transform: translateY(25px) scale(0.97);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .deck-close-btn {
     position: absolute;
     top: 16px;
     right: 20px;
-    background: rgba(30, 41, 59, 0.8);
+    background: rgba(30, 41, 59, 0.9);
     border: 1px solid rgba(148, 163, 184, 0.3);
     color: #cbd5e1;
     width: 34px;
@@ -721,7 +749,6 @@ select:focus, input[type="number"]:focus {
     border-radius: 50%;
     font-size: 22px;
     cursor: pointer;
-    transition: all 0.2s ease;
 }
 
 .deck-close-btn:hover {
@@ -787,7 +814,6 @@ select:focus, input[type="number"]:focus {
     font-weight: 700;
     cursor: pointer;
     border: none;
-    transition: all 0.2s ease;
 }
 
 .action-chip.origin {
@@ -865,7 +891,7 @@ select:focus, input[type="number"]:focus {
     font-size: 0.92rem;
     color: #cbd5e1;
     line-height: 1.5;
-    background: rgba(30, 41, 59, 0.4);
+    background: rgba(24, 34, 52, 0.65);
     padding: 12px;
     border-radius: 8px;
     border-left: 3px solid #38bdf8;
@@ -884,7 +910,7 @@ select:focus, input[type="number"]:focus {
 }
 
 .d-stat {
-    background: rgba(30, 41, 59, 0.55);
+    background: rgba(24, 34, 52, 0.72);
     padding: 10px 12px;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -912,7 +938,7 @@ select:focus, input[type="number"]:focus {
 }
 
 .supply-upgrade-card {
-    background: rgba(15, 23, 42, 0.85);
+    background: rgba(15, 23, 42, 0.9);
     border: 1px solid rgba(56, 189, 248, 0.28);
     border-radius: 8px;
     padding: 12px;
@@ -955,7 +981,6 @@ select:focus, input[type="number"]:focus {
     padding: 5px 10px;
     border-radius: 4px;
     cursor: pointer;
-    transition: background 0.2s ease;
 }
 
 .btn-equip:hover {
@@ -970,7 +995,7 @@ select:focus, input[type="number"]:focus {
 }
 
 .corridor-pill {
-    background: rgba(30, 41, 59, 0.75);
+    background: rgba(24, 34, 52, 0.85);
     border: 1px solid rgba(56, 189, 248, 0.25);
     padding: 6px 10px;
     border-radius: 6px;
@@ -983,6 +1008,411 @@ select:focus, input[type="number"]:focus {
     color: #fca5a5;
 }
 
+/* ==========================================================================
+   First-Person Starship Cockpit Journey Window
+   ========================================================================== */
+.cockpit-window {
+    position: fixed;
+    inset: 0;
+    z-index: 800;
+    background: #010206;
+    overflow: hidden;
+}
+
+#cockpitCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.cockpit-top-hud {
+    position: absolute;
+    top: 16px;
+    left: 24px;
+    right: 24px;
+    z-index: 810;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.cockpit-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(7, 13, 26, 0.88);
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    padding: 8px 14px;
+    border-radius: 8px;
+}
+
+.cockpit-badge {
+    font-family: monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: rgba(56, 239, 125, 0.16);
+    border: 1px solid #38ef7d;
+    color: #38ef7d;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.cockpit-brand h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.92rem;
+    color: #ffffff;
+    letter-spacing: 1.4px;
+}
+
+.cockpit-status-pill {
+    background: rgba(7, 13, 26, 0.9);
+    border: 1px solid #38bdf8;
+    color: #38bdf8;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    padding: 7px 14px;
+    border-radius: 20px;
+}
+
+.cockpit-status-pill.warning {
+    border-color: #ef4444;
+    color: #fca5a5;
+    background: rgba(127, 29, 29, 0.85);
+}
+
+.cockpit-status-pill.refuel {
+    border-color: #facc15;
+    color: #fef08a;
+    background: rgba(113, 63, 18, 0.85);
+}
+
+.cockpit-top-actions {
+    display: flex;
+    gap: 10px;
+    pointer-events: auto;
+}
+
+.cockpit-btn {
+    background: rgba(12, 20, 38, 0.92);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #e2e8f0;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.cockpit-btn:hover, .cockpit-btn.active {
+    background: rgba(56, 189, 248, 0.25);
+    border-color: #38bdf8;
+    color: #ffffff;
+}
+
+.cockpit-btn.primary {
+    background: #0284c7;
+    border-color: #38bdf8;
+    color: #ffffff;
+}
+
+.cockpit-btn.exit {
+    background: rgba(185, 28, 28, 0.85);
+    border-color: #f87171;
+    color: #ffffff;
+}
+
+.cockpit-btn.exit:hover {
+    background: #ef4444;
+}
+
+/* Left & Right Canopy Telemetry Panels */
+.cockpit-side-panel {
+    position: absolute;
+    top: 82px;
+    width: 280px;
+    z-index: 810;
+    background: rgba(7, 13, 26, 0.84);
+    border: 1px solid rgba(56, 189, 248, 0.34);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
+    transition: opacity 0.25s ease;
+}
+
+.cockpit-side-panel.left {
+    left: 24px;
+}
+
+.cockpit-side-panel.right {
+    right: 24px;
+    max-height: calc(100vh - 180px);
+}
+
+.cockpit-window.minimal-hud .cockpit-hud-element {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.c-panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: #38bdf8;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    padding-bottom: 4px;
+}
+
+.c-gauge-block {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.c-gauge-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #cbd5e1;
+}
+
+.c-val.green { color: #38ef7d; font-family: 'Orbitron', sans-serif; }
+.c-val.amber { color: #facc15; font-family: 'Orbitron', sans-serif; }
+
+.c-bar-track {
+    width: 100%;
+    height: 7px;
+    background: rgba(30, 41, 59, 0.9);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.c-bar-fill {
+    height: 100%;
+    transition: width 0.12s linear;
+}
+
+.c-bar-fill.green { background: linear-gradient(90deg, #059669, #38ef7d); }
+.c-bar-fill.amber { background: linear-gradient(90deg, #d97706, #ef4444); }
+
+.c-readout-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.c-readout {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 7px 9px;
+    border-radius: 6px;
+}
+
+.c-lbl {
+    display: block;
+    font-size: 0.58rem;
+    letter-spacing: 0.8px;
+    color: #94a3b8;
+}
+
+.c-num {
+    display: block;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem;
+    color: #f8fafc;
+    margin-top: 2px;
+}
+
+.c-scanner-card {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.c-scan-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.c-sector-tag {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem;
+    background: rgba(56, 189, 248, 0.18);
+    color: #38bdf8;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.c-dist-tag {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #38ef7d;
+    font-weight: 700;
+}
+
+.c-target-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.c-target-meta {
+    font-size: 0.78rem;
+    color: #cbd5e1;
+    margin-top: 3px;
+}
+
+.c-target-refuel {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #facc15;
+    margin-top: 5px;
+}
+
+.cockpit-leg-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    max-height: 220px;
+}
+
+.c-leg-item {
+    background: rgba(15, 23, 42, 0.75);
+    border-left: 3px solid #475569;
+    padding: 6px 9px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.c-leg-item:hover {
+    background: rgba(56, 189, 248, 0.15);
+}
+
+.c-leg-item.done {
+    border-left-color: #38ef7d;
+    opacity: 0.78;
+}
+
+.c-leg-item.active {
+    border-left-color: #00f0ff;
+    background: rgba(0, 240, 255, 0.12);
+}
+
+.c-leg-route {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.c-leg-meta {
+    font-size: 0.68rem;
+    color: #94a3b8;
+}
+
+/* Bottom Bridge Flight Deck Console */
+.cockpit-console {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(940px, calc(100vw - 48px));
+    z-index: 815;
+    background: rgba(7, 13, 26, 0.92);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.8);
+}
+
+.console-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.warp-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+}
+
+.warp-lbl {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    font-weight: 700;
+}
+
+.scrubber-wrap {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+#cockpitScrubber {
+    width: 100%;
+    accent-color: #38bdf8;
+    cursor: pointer;
+    height: 6px;
+}
+
+.scrubber-markers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.scrub-dot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #38bdf8;
+    border: 1px solid #02040a;
+}
+
+.scrub-dot.refuel {
+    background: #facc15;
+    width: 10px;
+    height: 10px;
+}
+
+.cockpit-eta {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.72rem;
+    color: #38ef7d;
+    white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+    .cockpit-side-panel { display: none; }
+}
+
 /* Toast Container */
 .toast-container {
     position: fixed;
@@ -993,7 +1423,7 @@ select:focus, input[type="number"]:focus {
     flex-direction: column;
     gap: 8px;
     pointer-events: none;
-    transition: right 0.35s ease;
+    transition: right 0.3s ease;
 }
 
 body.sidebar-collapsed .toast-container {

@@ -25,37 +25,36 @@ public class GraphService {
 
     private void initializeSolarNetwork() {
         // --- INNER ROCKY SYSTEM (Faster Orbits, Inside Asteroid Belt) ---
-        addPlanet(new PlanetNode("P1", "Mercury Relay", "INNER", 58.0, 0.0, 55.0, 0.048, 0.4, "#94a3b8",
+        addPlanet(new PlanetNode("P1", "Mercury Relay", "INNER", 58.0, 0.0, 55.0, 0.154, 0.4, "#94a3b8",
                 false, 0.0, "Exosphere (Trace Sodium)", "High-temperature solar observation relay and laser comms repeater."));
-        addPlanet(new PlanetNode("P2", "Venus Orbital", "INNER", 108.0, 0.0, 82.0, 0.035, 1.9, "#fbbf24",
+        addPlanet(new PlanetNode("P2", "Venus Orbital", "INNER", 108.0, 0.0, 82.0, 0.112, 1.9, "#fbbf24",
                 false, 0.0, "Dense CO2 Cloud Deck", "Upper-atmosphere aerostat research hub and inner-system gravity-assist waypoint."));
-        addPlanet(new PlanetNode("P3", "Earth (Sol Prime)", "INNER", 149.6, 0.0, 112.0, 0.029, 3.1, "#38bdf8",
+        addPlanet(new PlanetNode("P3", "Earth (Sol Prime)", "INNER", 149.6, 0.0, 112.0, 0.093, 3.1, "#38bdf8",
                 true, 450.0, "Nitrogen-Oxygen (1.0 atm)", "Primary humanity headquarters, orbital shipyard, and deep-space propellant refinery."));
-        addPlanet(new PlanetNode("P4", "Luna Gateway", "INNER", 150.0, 0.0, 126.0, 0.032, 3.35, "#e2e8f0",
+        addPlanet(new PlanetNode("P4", "Luna Gateway", "INNER", 150.0, 0.0, 126.0, 0.102, 3.35, "#e2e8f0",
                 true, 380.0, "Vacuum / Pressurized Domes", "Low-gravity Helium-3 & LH2 propellant depot ideal for interplanetary launches."));
-        addPlanet(new PlanetNode("P5", "Mars Colony", "INNER", 227.9, 0.0, 155.0, 0.024, 4.7, "#f97316",
+        addPlanet(new PlanetNode("P5", "Mars Colony", "INNER", 227.9, 0.0, 155.0, 0.077, 4.7, "#f97316",
                 true, 520.0, "Thin CO2 (0.006 atm)", "Olympus terraforming command and primary staging port before the Main Asteroid Belt."));
 
         // --- MAIN ASTEROID BELT DEPOT ---
-        addPlanet(new PlanetNode("P6", "Ceres Mining Depot", "BELT", 413.0, 0.0, 195.0, 0.017, 1.1, "#a855f7",
+        addPlanet(new PlanetNode("P6", "Ceres Mining Depot", "BELT", 413.0, 0.0, 195.0, 0.054, 1.1, "#a855f7",
                 true, 310.0, "Vacuum / Subsurface Caverns", "Water-ice electrolysis refinery providing the cheapest propellant in the solar system."));
 
         // --- OUTER GAS & ICE GIANTS (Slower Orbits, Outside Asteroid Belt) ---
-        addPlanet(new PlanetNode("P7", "Jupiter Gateway", "OUTER", 778.5, 0.0, 245.0, 0.013, 2.4, "#eab308",
+        addPlanet(new PlanetNode("P7", "Jupiter Gateway", "OUTER", 778.5, 0.0, 245.0, 0.042, 2.4, "#eab308",
                 false, 0.0, "Hydrogen-Helium Magnetosphere", "High-radiation gravitational slingshot hub serving the Galilean moons."));
-        addPlanet(new PlanetNode("P8", "Europa Research Base", "OUTER", 779.0, 0.0, 265.0, 0.014, 2.65, "#06b6d4",
+        addPlanet(new PlanetNode("P8", "Europa Research Base", "OUTER", 779.0, 0.0, 265.0, 0.045, 2.65, "#06b6d4",
                 true, 490.0, "Tenuous Oxygen / Sub-ice Ocean", "Cryogenic deuterium-tritium fuel harvesting station and astrobiology lab."));
-        addPlanet(new PlanetNode("P9", "Saturn Ring Station", "OUTER", 1434.0, 0.0, 305.0, 0.009, 5.2, "#facc15",
+        addPlanet(new PlanetNode("P9", "Saturn Ring Station", "OUTER", 1434.0, 0.0, 305.0, 0.029, 5.2, "#facc15",
                 false, 0.0, "Ring Ice & Ionized Plasma", "Cassini Division sensor array and long-range quantum laser transceiver."));
-        addPlanet(new PlanetNode("P10", "Titan Colony", "OUTER", 1435.0, 0.0, 325.0, 0.010, 5.45, "#fb923c",
+        addPlanet(new PlanetNode("P10", "Titan Colony", "OUTER", 1435.0, 0.0, 325.0, 0.032, 5.45, "#fb923c",
                 true, 410.0, "Dense Nitrogen-Methane (1.45 atm)", "Liquid hydrocarbon propellant lakes and outer-system logistics fortress."));
-        addPlanet(new PlanetNode("P11", "Uranus Relay", "OUTER", 2871.0, 0.0, 365.0, 0.006, 0.8, "#22d3ee",
+        addPlanet(new PlanetNode("P11", "Uranus Relay", "OUTER", 2871.0, 0.0, 365.0, 0.019, 0.8, "#22d3ee",
                 false, 0.0, "Hydrogen-Helium-Methane", "Autonomous deep-space telemetry buoy bridging the ice giants."));
-        addPlanet(new PlanetNode("P12", "Neptune Outpost", "OUTER", 4495.0, 0.0, 405.0, 0.005, 4.1, "#3b82f6",
+        addPlanet(new PlanetNode("P12", "Neptune Outpost", "OUTER", 4495.0, 0.0, 405.0, 0.016, 4.1, "#3b82f6",
                 true, 680.0, "Supersonic Methane Winds", "Triton cryovolcanic refueling terminal and Kuiper Belt frontier gateway."));
 
         // --- INTERPLANETARY SPACE CORRIDORS (Source, Target, BaseDist Mkm, Interference, Hazard mSv, Fuel Tons) ---
-        // Inner System Network
         addBidirectionalRoute("P1", "P2", 50.2, 0.22, 42.0, 65.0);
         addBidirectionalRoute("P1", "P3", 91.6, 0.30, 55.0, 110.0);
         addBidirectionalRoute("P2", "P3", 41.4, 0.12, 18.0, 52.0);
@@ -63,20 +62,17 @@ public class GraphService {
         addBidirectionalRoute("P3", "P5", 78.3, 0.08, 14.0, 85.0);
         addBidirectionalRoute("P4", "P5", 77.5, 0.06, 12.0, 80.0);
 
-        // Asteroid Belt Crossings
         addBidirectionalRoute("P5", "P6", 185.0, 0.14, 22.0, 145.0);
         addBidirectionalRoute("P6", "P7", 365.0, 0.18, 38.0, 240.0);
-        addBidirectionalRoute("P5", "P7", 550.0, 0.25, 48.0, 360.0); // Direct Mars-Jupiter bypass
+        addBidirectionalRoute("P5", "P7", 550.0, 0.25, 48.0, 360.0);
 
-        // Outer System Network
-        addBidirectionalRoute("P7", "P8", 4.5, 0.15, 65.0, 18.0);   // High Jupiter radiation belt
+        addBidirectionalRoute("P7", "P8", 4.5, 0.15, 65.0, 18.0);
         addBidirectionalRoute("P7", "P9", 655.0, 0.20, 30.0, 390.0);
         addBidirectionalRoute("P8", "P9", 650.0, 0.16, 26.0, 380.0);
         addBidirectionalRoute("P9", "P10", 6.0, 0.07, 10.0, 20.0);
         addBidirectionalRoute("P10", "P11", 1436.0, 0.28, 35.0, 520.0);
         addBidirectionalRoute("P11", "P12", 1624.0, 0.34, 42.0, 560.0);
 
-        // High-Energy Solar Slingshot Express Lanes
         addBidirectionalRoute("P2", "P5", 119.0, 0.19, 32.0, 115.0);
         addBidirectionalRoute("P6", "P8", 368.0, 0.14, 34.0, 235.0);
         addBidirectionalRoute("P8", "P10", 652.0, 0.15, 24.0, 375.0);

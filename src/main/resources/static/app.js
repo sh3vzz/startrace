@@ -1,5 +1,5 @@
 // ============================================================================
-// StarTrace — 3D-Parallax Solar Sector Engine & Aerospace DSA Controller
+// StarTrace — High-FPS 3D-Shaded Solar Sector Engine & Aerospace DSA Controller
 // ============================================================================
 
 const API_BASE_URL = "http://localhost:8080/api";
@@ -11,13 +11,23 @@ let activeRouteData = null;
 let mstData = null;
 
 // Environment & Simulation State
-let stars = [];
-let nebulaClouds = [];
 let beltAsteroids = [];
 let globalTime = 0;
+let lastFrameTime = 0;
 let showOrbits = true;
 let showMST = false;
 let shipPulseProgress = 0;
+let mapRouteSchedule = [];
+let mainLoopStarted = false;
+
+// Pre-rendered Offscreen 3D Parallax Caches for 60+ FPS Performance
+let bgDeepGalaxyCanvas = null;
+let bgMidStarsCanvas = null;
+let sunCacheCanvas = null;
+let asteroidSprites = [];
+let shipSpriteCanvas = null;
+let sphereShadeSprite = null;
+const planetTextureCache = new Map();
 
 // Camera Pan & Zoom State
 let zoom = 1.0;
@@ -40,6 +50,23 @@ let hoveredEdge = null;
 let hoveredPlanet = null;
 let selectedDeckPlanet = null;
 let deckAnimId = null;
+
+// First-Person Starship Cockpit Simulation State
+let cockpitCanvas = null;
+let cockpitCtx = null;
+let cockpitAnimId = null;
+let cockpitOpen = false;
+let cockpitPlaying = true;
+let cockpitSpeedMult = 1;
+let cockpitProgress = 0;
+let cockpitLegs = [];
+let cockpitStars = [];
+let cockpitAsteroids = [];
+let cockpitLookX = 0;
+let cockpitLookY = 0;
+let cockpitTargetLookX = 0;
+let cockpitTargetLookY = 0;
+let cockpitLastTime = 0;
 
 // Realistic Spacecraft Supplies & Upgrades Catalog (Priced in $)
 const shipSuppliesCatalog = [
@@ -88,21 +115,24 @@ const shipSuppliesCatalog = [
     }
 ];
 
-// Bulletproof initialization that fires immediately if DOM is ready
 function initStarTraceApp() {
+    buildStaticSprites();
     runCinematicBootSequence();
 
     canvas = document.getElementById("galaxyCanvas");
     if (canvas) {
-        ctx = canvas.getContext("2d");
+        ctx = canvas.getContext("2d", { alpha: false });
         resizeCanvas();
-        window.addEventListener("resize", resizeCanvas);
+        window.addEventListener("resize", () => {
+            resizeCanvas();
+            if (cockpitOpen) resizeCockpitCanvas();
+        });
         setupCanvasInteractions();
     }
 
     setupControlListeners();
+    setupCockpitListeners();
     loadInitialNetworkData();
-    startMainLoop();
 }
 
 if (document.readyState === "loading") {
@@ -118,11 +148,14 @@ function runCinematicBootSequence() {
     const overlay = document.getElementById("bootOverlay");
     const fill = document.getElementById("bootProgressFill");
     const status = document.getElementById("bootStatusText");
-    if (!overlay || !fill) return;
+    if (!overlay || !fill) {
+        startMainLoop();
+        return;
+    }
 
     const steps = [
-        { pct: 30, msg: "INITIALIZING KEPLERIAN ORBITAL MECHANICS..." },
-        { pct: 68, msg: "LOADING ADJACENCY GRAPH, MIN-HEAP & DISJOINT SET..." },
+        { pct: 35, msg: "INITIALIZING KEPLERIAN ORBITAL MECHANICS..." },
+        { pct: 72, msg: "SYNTHESIZING 3D PLANETARY TEXTURES & STARSHIP..." },
         { pct: 100, msg: "SOLAR SECTOR TELEMETRY ONLINE." }
     ];
 
@@ -134,12 +167,13 @@ function runCinematicBootSequence() {
             stepIdx++;
         } else {
             clearInterval(interval);
+            startMainLoop();
             setTimeout(() => {
                 overlay.classList.add("fade-out");
-                setTimeout(() => overlay.remove(), 950);
-            }, 350);
+                setTimeout(() => overlay.remove(), 700);
+            }, 220);
         }
-    }, 420);
+    }, 280);
 }
 
 // ============================================================================
@@ -157,6 +191,7 @@ async function loadInitialNetworkData() {
         planetsData = await planetsRes.json();
         edgesData = await edgesRes.json();
 
+        planetsData.forEach(p => getPlanetTexture(p));
         populateStationControls(planetsData);
         populateEdgeSelector(edgesData);
         refreshLeaderboard();
@@ -206,7 +241,466 @@ function populateEdgeSelector(edges) {
 }
 
 // ============================================================================
-// 3. 3D-Parallax Deep Space Canvas & Asteroid Belt Renderer
+// 3. Pre-Rendered 3D Sprites & Procedural Planetary Textures (60+ FPS)
+// ============================================================================
+function buildStaticSprites() {
+    sunCacheCanvas = document.createElement("canvas");
+    sunCacheCanvas.width = 160;
+    sunCacheCanvas.height = 160;
+    const sCtx = sunCacheCanvas.getContext("2d");
+    const sc = 80;
+
+    const corona = sCtx.createRadialGradient(sc, sc, 10, sc, sc, 74);
+    corona.addColorStop(0, "rgba(254, 240, 138, 0.95)");
+    corona.addColorStop(0.28, "rgba(245, 158, 11, 0.52)");
+    corona.addColorStop(0.65, "rgba(234, 88, 12, 0.14)");
+    corona.addColorStop(1, "rgba(234, 88, 12, 0)");
+    sCtx.fillStyle = corona;
+    sCtx.beginPath();
+    sCtx.arc(sc, sc, 74, 0, Math.PI * 2);
+    sCtx.fill();
+
+    const core = sCtx.createRadialGradient(sc - 5, sc - 5, 2, sc, sc, 23);
+    core.addColorStop(0, "#ffffff");
+    core.addColorStop(0.45, "#fef08a");
+    core.addColorStop(1, "#f59e0b");
+    sCtx.fillStyle = core;
+    sCtx.beginPath();
+    sCtx.arc(sc, sc, 23, 0, Math.PI * 2);
+    sCtx.fill();
+
+    sphereShadeSprite = document.createElement("canvas");
+    sphereShadeSprite.width = 180;
+    sphereShadeSprite.height = 180;
+    const shCtx = sphereShadeSprite.getContext("2d");
+    const c = 90;
+    const r = 88;
+
+    const sunShade = shCtx.createRadialGradient(c + r * 0.48, c, r * 0.08, c, c, r * 1.48);
+    sunShade.addColorStop(0.0, "rgba(255, 255, 245, 0.28)");
+    sunShade.addColorStop(0.42, "rgba(255, 255, 255, 0.0)");
+    sunShade.addColorStop(0.75, "rgba(3, 7, 18, 0.62)");
+    sunShade.addColorStop(1.0, "rgba(1, 3, 9, 0.94)");
+    shCtx.fillStyle = sunShade;
+    shCtx.beginPath();
+    shCtx.arc(c, c, r, 0, Math.PI * 2);
+    shCtx.fill();
+
+    const limbGrad = shCtx.createRadialGradient(c, c, r * 0.62, c, c, r);
+    limbGrad.addColorStop(0, "rgba(0, 0, 0, 0)");
+    limbGrad.addColorStop(1, "rgba(0, 0, 0, 0.46)");
+    shCtx.fillStyle = limbGrad;
+    shCtx.beginPath();
+    shCtx.arc(c, c, r, 0, Math.PI * 2);
+    shCtx.fill();
+
+    shipSpriteCanvas = build3DSpacecraftSprite();
+
+    asteroidSprites = ["#64748b", "#475569", "#52525b"].map(shade => {
+        const ac = document.createElement("canvas");
+        ac.width = 12;
+        ac.height = 12;
+        const actx = ac.getContext("2d");
+        actx.translate(6, 6);
+        actx.beginPath();
+        const pts = [0.9, 1.15, 0.8, 1.1, 0.85, 1.05];
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2;
+            const rad = 3.2 * pts[i];
+            if (i === 0) actx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+            else actx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        }
+        actx.closePath();
+        actx.fillStyle = shade;
+        actx.fill();
+        return ac;
+    });
+}
+
+function build3DSpacecraftSprite() {
+    const sc = document.createElement("canvas");
+    sc.width = 110;
+    sc.height = 110;
+    const g = sc.getContext("2d");
+    g.translate(55, 55);
+
+    g.fillStyle = "#1e293b";
+    g.strokeStyle = "#64748b";
+    g.lineWidth = 1;
+    g.fillRect(-25, -10, 8, 6);
+    g.strokeRect(-25, -10, 8, 6);
+    g.fillRect(-25, 4, 8, 6);
+    g.strokeRect(-25, 4, 8, 6);
+
+    g.fillStyle = "#38bdf8";
+    g.fillRect(-26, -9, 2.5, 4);
+    g.fillRect(-26, 5, 2.5, 4);
+
+    const portWing = g.createLinearGradient(0, -30, 0, -4);
+    portWing.addColorStop(0, "#94a3b8");
+    portWing.addColorStop(0.5, "#e2e8f0");
+    portWing.addColorStop(1, "#cbd5e1");
+    g.fillStyle = portWing;
+    g.beginPath();
+    g.moveTo(8, -5);
+    g.lineTo(-18, -28);
+    g.lineTo(-23, -24);
+    g.lineTo(-16, -6);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = "#475569";
+    g.lineWidth = 0.8;
+    g.stroke();
+
+    const stbdWing = g.createLinearGradient(0, 4, 0, 30);
+    stbdWing.addColorStop(0, "#94a3b8");
+    stbdWing.addColorStop(0.5, "#64748b");
+    stbdWing.addColorStop(1, "#334155");
+    g.fillStyle = stbdWing;
+    g.beginPath();
+    g.moveTo(8, 5);
+    g.lineTo(-18, 28);
+    g.lineTo(-23, 24);
+    g.lineTo(-16, 6);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = "#1e293b";
+    g.lineWidth = 0.8;
+    g.stroke();
+
+    g.fillStyle = "#cbd5e1";
+    g.beginPath();
+    g.moveTo(21, -3);
+    g.lineTo(12, -12);
+    g.lineTo(10, -3);
+    g.closePath();
+    g.fill();
+
+    g.fillStyle = "#64748b";
+    g.beginPath();
+    g.moveTo(21, 3);
+    g.lineTo(12, 12);
+    g.lineTo(10, 3);
+    g.closePath();
+    g.fill();
+
+    const hullGrad = g.createLinearGradient(0, -8, 0, 8);
+    hullGrad.addColorStop(0.0, "#ffffff");
+    hullGrad.addColorStop(0.35, "#e2e8f0");
+    hullGrad.addColorStop(0.72, "#64748b");
+    hullGrad.addColorStop(1.0, "#1e293b");
+
+    g.fillStyle = hullGrad;
+    g.beginPath();
+    g.moveTo(36, 0);
+    g.quadraticCurveTo(24, -7, 4, -7);
+    g.lineTo(-21, -6);
+    g.lineTo(-21, 6);
+    g.lineTo(4, 7);
+    g.quadraticCurveTo(24, 7, 36, 0);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = "#334155";
+    g.lineWidth = 0.9;
+    g.stroke();
+
+    g.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(-18, -1.5);
+    g.lineTo(26, -1.2);
+    g.stroke();
+
+    g.fillStyle = "#facc15";
+    g.beginPath();
+    g.moveTo(36, 0);
+    g.lineTo(31, -2);
+    g.lineTo(31, 2);
+    g.closePath();
+    g.fill();
+
+    const canopyGrad = g.createLinearGradient(8, -4, 21, 4);
+    canopyGrad.addColorStop(0, "#0284c7");
+    canopyGrad.addColorStop(0.5, "#38bdf8");
+    canopyGrad.addColorStop(1, "#e0f2fe");
+    g.fillStyle = canopyGrad;
+    g.beginPath();
+    g.ellipse(15, 0, 6.5, 3.2, 0, 0, Math.PI * 2);
+    g.fill();
+
+    g.fillStyle = "#ef4444";
+    g.beginPath();
+    g.arc(-19, -26, 1.8, 0, Math.PI * 2);
+    g.fill();
+
+    g.fillStyle = "#22c55e";
+    g.beginPath();
+    g.arc(-19, 26, 1.8, 0, Math.PI * 2);
+    g.fill();
+
+    return sc;
+}
+
+// Seamless Procedural Planetary Surface Texture Generator (256x128)
+function getPlanetTexture(planet) {
+    const key = planet.id || planet.name;
+    if (planetTextureCache.has(key)) return planetTextureCache.get(key);
+
+    const tc = document.createElement("canvas");
+    tc.width = 256;
+    tc.height = 128;
+    const t = tc.getContext("2d");
+    const w = tc.width;
+    const h = tc.height;
+    const name = (planet.name || "").toLowerCase();
+
+    const drawWrappedBlob = (x, y, rx, ry, rot, color) => {
+        t.fillStyle = color;
+        [-w, 0, w].forEach(dx => {
+            t.beginPath();
+            t.ellipse(x + dx, y, rx, ry, rot, 0, Math.PI * 2);
+            t.fill();
+        });
+    };
+
+    const drawWrappedCrater = (x, y, r, darkCol, lightCol) => {
+        [-w, 0, w].forEach(dx => {
+            t.fillStyle = lightCol;
+            t.beginPath();
+            t.arc(x + dx + 1, y + 1, r, 0, Math.PI * 2);
+            t.fill();
+            t.fillStyle = darkCol;
+            t.beginPath();
+            t.arc(x + dx, y, r * 0.88, 0, Math.PI * 2);
+            t.fill();
+        });
+    };
+
+    if (name.includes("earth")) {
+        const ocean = t.createLinearGradient(0, 0, 0, h);
+        ocean.addColorStop(0, "#1d4ed8");
+        ocean.addColorStop(0.5, "#0369a1");
+        ocean.addColorStop(1, "#1e3a8a");
+        t.fillStyle = ocean;
+        t.fillRect(0, 0, w, h);
+
+        const continents = [
+            { x: 48, y: 42, rx: 22, ry: 16, rot: -0.3, c: "#15803d" },
+            { x: 58, y: 52, rx: 14, ry: 10, rot: 0.2, c: "#65a30d" },
+            { x: 68, y: 82, rx: 14, ry: 22, rot: 0.25, c: "#16a34a" },
+            { x: 145, y: 38, rx: 32, ry: 16, rot: 0.1, c: "#15803d" },
+            { x: 172, y: 44, rx: 24, ry: 14, rot: -0.15, c: "#4d7c0f" },
+            { x: 142, y: 68, rx: 18, ry: 24, rot: 0.1, c: "#ca8a04" },
+            { x: 144, y: 78, rx: 13, ry: 16, rot: 0.0, c: "#16a34a" },
+            { x: 205, y: 88, rx: 14, ry: 10, rot: -0.2, c: "#b45309" }
+        ];
+        continents.forEach(c => drawWrappedBlob(c.x, c.y, c.rx, c.ry, c.rot, c.c));
+
+        t.fillStyle = "#f8fafc";
+        t.fillRect(0, 0, w, 10);
+        t.fillRect(0, h - 11, w, 11);
+
+        for (let i = 0; i < 18; i++) {
+            drawWrappedBlob((i * 37) % w, 18 + ((i * 19) % 92), 26, 3.5, (i % 3 - 1) * 0.15, "rgba(255,255,255,0.42)");
+        }
+    } else if (name.includes("jupiter")) {
+        const bands = [
+            [0, 14, "#8c6d53"], [14, 14, "#f3e5ab"], [28, 16, "#b45309"],
+            [44, 18, "#fef3c7"], [62, 16, "#9a3412"], [78, 18, "#fde68a"],
+            [96, 16, "#a16207"], [112, 16, "#78350f"]
+        ];
+        bands.forEach(([y, bh, col]) => {
+            t.fillStyle = col;
+            t.fillRect(0, y, w, bh);
+        });
+        for (let i = 0; i < 24; i++) {
+            drawWrappedBlob((i * 29) % w, 20 + ((i * 17) % 88), 18, 2.5, 0, "rgba(255, 248, 220, 0.25)");
+        }
+        drawWrappedBlob(120, 74, 19, 11, 0, "#991b1b");
+        drawWrappedBlob(120, 74, 13, 7, 0, "#dc2626");
+        drawWrappedBlob(120, 74, 6, 3, 0, "#fca5a5");
+    } else if (name.includes("saturn")) {
+        const bands = [
+            [0, 16, "#a16207"], [16, 18, "#fde68a"], [34, 16, "#d97706"],
+            [50, 24, "#fef3c7"], [74, 18, "#eab308"], [92, 18, "#ca8a04"],
+            [110, 18, "#854d0e"]
+        ];
+        bands.forEach(([y, bh, col]) => {
+            t.fillStyle = col;
+            t.fillRect(0, y, w, bh);
+        });
+    } else if (name.includes("mars")) {
+        t.fillStyle = "#c2410c";
+        t.fillRect(0, 0, w, h);
+        drawWrappedBlob(70, 56, 36, 16, -0.2, "#7c2d12");
+        drawWrappedBlob(165, 68, 42, 18, 0.15, "#5c1d0c");
+        drawWrappedBlob(215, 44, 24, 12, 0.1, "#9a3412");
+        drawWrappedBlob(110, 42, 22, 10, 0, "#ea580c");
+        t.fillStyle = "#f8fafc";
+        t.fillRect(0, 0, w, 9);
+        t.fillRect(0, h - 8, w, 8);
+    } else if (name.includes("venus")) {
+        t.fillStyle = "#d97706";
+        t.fillRect(0, 0, w, h);
+        for (let i = 0; i < 16; i++) {
+            drawWrappedBlob((i * 41) % w, 12 + ((i * 23) % 104), 48, 9, (i % 2 === 0 ? 0.12 : -0.12), "rgba(254, 240, 138, 0.36)");
+        }
+    } else if (name.includes("uranus")) {
+        const g = t.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, "#a5f3fc");
+        g.addColorStop(0.5, "#22d3ee");
+        g.addColorStop(1, "#0891b2");
+        t.fillStyle = g;
+        t.fillRect(0, 0, w, h);
+        t.fillStyle = "rgba(255,255,255,0.18)";
+        t.fillRect(0, 44, w, 12);
+        t.fillRect(0, 74, w, 10);
+    } else if (name.includes("neptune")) {
+        const g = t.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, "#1e3a8a");
+        g.addColorStop(0.5, "#2563eb");
+        g.addColorStop(1, "#1d4ed8");
+        t.fillStyle = g;
+        t.fillRect(0, 0, w, h);
+        drawWrappedBlob(110, 68, 16, 10, 0, "#172554");
+        drawWrappedBlob(114, 62, 18, 2.5, -0.1, "rgba(224, 242, 254, 0.75)");
+        drawWrappedBlob(195, 42, 24, 2.5, 0.08, "rgba(186, 230, 253, 0.65)");
+    } else if (name.includes("europa")) {
+        t.fillStyle = "#e0f2fe";
+        t.fillRect(0, 0, w, h);
+        drawWrappedBlob(90, 52, 45, 22, 0.2, "#bae6fd");
+        t.strokeStyle = "rgba(154, 52, 18, 0.55)";
+        t.lineWidth = 1.6;
+        for (let i = 0; i < 14; i++) {
+            const sx = (i * 39) % w;
+            [-w, 0, w].forEach(dx => {
+                t.beginPath();
+                t.moveTo(sx + dx, 8);
+                t.lineTo(sx + dx + 55, 120);
+                t.stroke();
+            });
+        }
+    } else if (name.includes("titan")) {
+        const g = t.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, "#c2410c");
+        g.addColorStop(0.5, "#f97316");
+        g.addColorStop(1, "#b45309");
+        t.fillStyle = g;
+        t.fillRect(0, 0, w, h);
+        drawWrappedBlob(80, 24, 34, 10, 0, "rgba(67, 20, 7, 0.45)");
+        drawWrappedBlob(180, 64, 52, 12, 0, "rgba(253, 224, 71, 0.22)");
+    } else if (name.includes("ceres")) {
+        t.fillStyle = "#581c87";
+        t.fillRect(0, 0, w, h);
+        drawWrappedBlob(100, 64, 65, 36, 0, "#4c1d95");
+        for (let i = 0; i < 16; i++) {
+            drawWrappedCrater((i * 31) % w, 18 + ((i * 23) % 92), 5 + (i % 5), "#3b0764", "#a855f7");
+        }
+        drawWrappedBlob(132, 58, 5, 4, 0, "#f8fafc");
+    } else {
+        const isLuna = name.includes("luna");
+        t.fillStyle = isLuna ? "#cbd5e1" : "#94a3b8";
+        t.fillRect(0, 0, w, h);
+        if (isLuna) {
+            drawWrappedBlob(76, 48, 32, 22, 0.2, "#64748b");
+            drawWrappedBlob(164, 58, 28, 24, -0.2, "#475569");
+        }
+        for (let i = 0; i < 22; i++) {
+            drawWrappedCrater((i * 27) % w, 14 + ((i * 19) % 100), 4 + (i % 6), "#475569", "#e2e8f0");
+        }
+    }
+
+    planetTextureCache.set(key, tc);
+    return tc;
+}
+
+// Renders a 3D Rotating, Illuminated Planet with Rings & Atmosphere
+function drawTexturedPlanet(targetCtx, planet, cx, cy, radius, lightAngle, spinAngle) {
+    const tex = getPlanetTexture(planet);
+    const nameLower = (planet.name || "").toLowerCase();
+    const isSaturn = planet.id === "P9" || nameLower.includes("saturn");
+    const isUranus = planet.id === "P11" || nameLower.includes("uranus");
+
+    if (isSaturn) {
+        drawPlanetaryRingArc(targetCtx, cx, cy, radius, -0.42, Math.PI, Math.PI * 2, true);
+    } else if (isUranus) {
+        drawPlanetaryRingArc(targetCtx, cx, cy, radius, 1.22, Math.PI, Math.PI * 2, false);
+    }
+
+    targetCtx.save();
+    targetCtx.beginPath();
+    targetCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    targetCtx.clip();
+
+    const diameter = radius * 2;
+    const drawW = diameter * (tex.width / tex.height);
+    const twoPi = Math.PI * 2;
+    const u = (((spinAngle % twoPi) + twoPi) % twoPi) / twoPi;
+    const offset = u * drawW;
+    const startX = (cx - radius) - offset;
+
+    targetCtx.drawImage(tex, startX, cy - radius, drawW, diameter);
+    targetCtx.drawImage(tex, startX + drawW, cy - radius, drawW, diameter);
+
+    if (sphereShadeSprite) {
+        targetCtx.save();
+        targetCtx.translate(cx, cy);
+        targetCtx.rotate(lightAngle);
+        targetCtx.drawImage(sphereShadeSprite, -radius, -radius, diameter, diameter);
+        targetCtx.restore();
+    }
+    targetCtx.restore();
+
+    const rimColor = nameLower.includes("earth") ? "rgba(56, 189, 248, 0.7)" :
+        nameLower.includes("mars") ? "rgba(251, 146, 60, 0.55)" :
+            nameLower.includes("titan") || nameLower.includes("venus") ? "rgba(250, 204, 21, 0.6)" :
+                nameLower.includes("neptune") || nameLower.includes("uranus") ? "rgba(34, 211, 238, 0.6)" :
+                    "rgba(226, 232, 240, 0.4)";
+
+    targetCtx.save();
+    targetCtx.beginPath();
+    targetCtx.arc(cx, cy, radius, lightAngle - 1.15, lightAngle + 1.15);
+    targetCtx.strokeStyle = rimColor;
+    targetCtx.lineWidth = Math.max(1.2, radius * 0.06);
+    targetCtx.stroke();
+    targetCtx.restore();
+
+    if (isSaturn) {
+        drawPlanetaryRingArc(targetCtx, cx, cy, radius, -0.42, 0, Math.PI, true);
+    } else if (isUranus) {
+        drawPlanetaryRingArc(targetCtx, cx, cy, radius, 1.22, 0, Math.PI, false);
+    }
+}
+
+function drawPlanetaryRingArc(targetCtx, cx, cy, radius, tilt, startA, endA, isSaturn) {
+    targetCtx.save();
+    targetCtx.translate(cx, cy);
+    targetCtx.rotate(tilt);
+
+    if (isSaturn) {
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, radius * 2.28, radius * 0.68, 0, startA, endA);
+        targetCtx.strokeStyle = "rgba(253, 230, 138, 0.68)";
+        targetCtx.lineWidth = Math.max(2.0, radius * 0.22);
+        targetCtx.stroke();
+
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, radius * 1.72, radius * 0.51, 0, startA, endA);
+        targetCtx.strokeStyle = "rgba(254, 243, 199, 0.85)";
+        targetCtx.lineWidth = Math.max(2.4, radius * 0.28);
+        targetCtx.stroke();
+    } else {
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, radius * 1.85, radius * 0.45, 0, startA, endA);
+        targetCtx.strokeStyle = "rgba(103, 232, 249, 0.42)";
+        targetCtx.lineWidth = Math.max(1.2, radius * 0.1);
+        targetCtx.stroke();
+    }
+    targetCtx.restore();
+}
+
+// ============================================================================
+// 4. High-FPS 3D Parallax Deep Space Canvas & Offscreen Starfield Layers
 // ============================================================================
 function resizeCanvas() {
     if (!canvas) return;
@@ -218,50 +712,95 @@ function resizeCanvas() {
 function initDeepSpaceEnvironment() {
     const w = canvas.width;
     const h = canvas.height;
+    const pad = 700;
+    const fullW = w + pad * 2;
+    const fullH = h + pad * 2;
 
-    stars = [];
-    const starCount = Math.floor((w * h) / 1400);
-    const palette = ["#ffffff", "#bae6fd", "#fef08a", "#fed7aa", "#c4b5fd"];
+    // Layer 1: Deep Galaxy & Nebula Layer (Moves slowly at 0.12x pan for 3D depth)
+    bgDeepGalaxyCanvas = document.createElement("canvas");
+    bgDeepGalaxyCanvas.width = fullW;
+    bgDeepGalaxyCanvas.height = fullH;
+    const dCtx = bgDeepGalaxyCanvas.getContext("2d", { alpha: false });
 
-    for (let i = 0; i < starCount; i++) {
-        stars.push({
-            x: Math.random() * w,
-            y: Math.random() * h,
-            depth: Math.random() * 0.6 + 0.1,
-            radius: Math.random() * 1.4 + 0.3,
-            color: palette[Math.floor(Math.random() * palette.length)],
-            alpha: Math.random() * 0.7 + 0.25,
-            twinkle: Math.random() * Math.PI * 2,
-            speed: Math.random() * 0.025 + 0.005
-        });
-    }
+    const bg = dCtx.createRadialGradient(fullW * 0.45, fullH * 0.5, 60, fullW * 0.45, fullH * 0.5, Math.max(fullW, fullH) * 0.7);
+    bg.addColorStop(0, "#081021");
+    bg.addColorStop(0.55, "#030712");
+    bg.addColorStop(1, "#010205");
+    dCtx.fillStyle = bg;
+    dCtx.fillRect(0, 0, fullW, fullH);
 
-    nebulaClouds = [
-        { x: w * 0.35, y: h * 0.45, r: Math.max(w, h) * 0.45, c1: "rgba(56, 189, 248, 0.09)", c2: "rgba(15, 23, 42, 0)" },
-        { x: w * 0.65, y: h * 0.55, r: Math.max(w, h) * 0.42, c1: "rgba(139, 92, 246, 0.09)", c2: "rgba(15, 23, 42, 0)" }
+    const nebulae = [
+        { x: fullW * 0.36, y: fullH * 0.44, r: Math.max(w, h) * 0.52, c1: "rgba(56, 189, 248, 0.09)", c2: "rgba(15, 23, 42, 0)" },
+        { x: fullW * 0.64, y: fullH * 0.56, r: Math.max(w, h) * 0.48, c1: "rgba(139, 92, 246, 0.09)", c2: "rgba(15, 23, 42, 0)" },
+        { x: fullW * 0.50, y: fullH * 0.32, r: Math.max(w, h) * 0.36, c1: "rgba(16, 185, 129, 0.05)", c2: "rgba(15, 23, 42, 0)" }
     ];
+    nebulae.forEach(n => {
+        const g = dCtx.createRadialGradient(n.x, n.y, 10, n.x, n.y, n.r);
+        g.addColorStop(0, n.c1);
+        g.addColorStop(1, n.c2);
+        dCtx.fillStyle = g;
+        dCtx.beginPath();
+        dCtx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        dCtx.fill();
+    });
+
+    // Distant faint background stars baked into deep layer
+    const deepStarCount = Math.min(900, Math.floor((fullW * fullH) / 4200));
+    const palette = ["#ffffff", "#bae6fd", "#fef08a", "#fed7aa", "#c4b5fd"];
+    for (let i = 0; i < deepStarCount; i++) {
+        dCtx.globalAlpha = Math.random() * 0.45 + 0.15;
+        dCtx.fillStyle = palette[i % palette.length];
+        const r = Math.random() * 1.0 + 0.3;
+        dCtx.beginPath();
+        dCtx.arc(Math.random() * fullW, Math.random() * fullH, r, 0, Math.PI * 2);
+        dCtx.fill();
+    }
+    dCtx.globalAlpha = 1.0;
+
+    // Layer 2: Mid-Depth Brighter Starfield (Transparent layer moving at 0.28x pan)
+    bgMidStarsCanvas = document.createElement("canvas");
+    bgMidStarsCanvas.width = fullW;
+    bgMidStarsCanvas.height = fullH;
+    const mCtx = bgMidStarsCanvas.getContext("2d");
+    const midStarCount = Math.min(550, Math.floor((fullW * fullH) / 6500));
+    for (let i = 0; i < midStarCount; i++) {
+        mCtx.globalAlpha = Math.random() * 0.65 + 0.3;
+        mCtx.fillStyle = palette[(i * 3) % palette.length];
+        const r = Math.random() * 1.45 + 0.55;
+        mCtx.beginPath();
+        mCtx.arc(Math.random() * fullW, Math.random() * fullH, r, 0, Math.PI * 2);
+        mCtx.fill();
+    }
+    mCtx.globalAlpha = 1.0;
 
     beltAsteroids = [];
-    for (let i = 0; i < 185; i++) {
-        const orbitR = 175 + Math.random() * 48;
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 0.018 + Math.random() * 0.008;
-        const size = Math.random() * 2.4 + 1.1;
-        const verts = 6;
-        const offsets = Array.from({ length: verts }, () => 0.7 + Math.random() * 0.5);
+    for (let i = 0; i < 140; i++) {
         beltAsteroids.push({
-            orbitR, angle, speed, size, verts, offsets,
-            selfRot: Math.random() * Math.PI * 2,
-            rotSpeed: (Math.random() - 0.5) * 0.04,
-            shade: Math.random() > 0.5 ? "#64748b" : "#475569"
+            orbitR: 176 + Math.random() * 44,
+            angle: Math.random() * Math.PI * 2,
+            speed: 0.045 + Math.random() * 0.02,
+            spriteIdx: i % 3
         });
     }
 }
 
 function startMainLoop() {
-    function loop() {
-        globalTime += 0.015;
-        shipPulseProgress = (shipPulseProgress + 0.006) % 1.0;
+    if (mainLoopStarted) return;
+    mainLoopStarted = true;
+    lastFrameTime = performance.now();
+
+    function loop(now) {
+        const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+        lastFrameTime = now;
+
+        globalTime += dt * 1.05;
+
+        // Well-paced ship journey timing (accounts for flight legs + refuel holds)
+        const totalUnits = mapRouteSchedule.length > 0
+            ? mapRouteSchedule[mapRouteSchedule.length - 1].endUnit
+            : 1;
+        const secondsPerUnit = 4.6;
+        shipPulseProgress = (shipPulseProgress + (dt / (totalUnits * secondsPerUnit))) % 1.0;
 
         const clockEl = document.getElementById("simClockBadge");
         if (clockEl) {
@@ -269,108 +808,96 @@ function startMainLoop() {
             clockEl.innerText = `EPOCH: DAY ${String(simDay).padStart(3, "0")} | LIVE ORBITS`;
         }
 
-        renderSolarSystem();
+        if (!cockpitOpen) {
+            renderSolarSystem(dt);
+        }
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
 }
 
-function renderSolarSystem() {
+function renderSolarSystem(dt) {
     if (!ctx || !canvas) return;
     const w = canvas.width;
     const h = canvas.height;
+    const pad = 700;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    const bg = ctx.createRadialGradient(w * 0.45, h * 0.5, 40, w * 0.45, h * 0.5, Math.max(w, h));
-    bg.addColorStop(0, "#081021");
-    bg.addColorStop(0.55, "#030712");
-    bg.addColorStop(1, "#010205");
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, w, h);
+    // Draw 3D Parallax Deep Galaxy & Starfield Layers (shifts gently when panning/zooming)
+    if (bgDeepGalaxyCanvas && bgMidStarsCanvas) {
+        const deepScale = 1 + (zoom - 1) * 0.10;
+        const deepX = (w * 0.5) - ((w * 0.5 + pad) * deepScale) + panX * 0.12;
+        const deepY = (h * 0.5) - ((h * 0.5 + pad) * deepScale) + panY * 0.12;
+        ctx.drawImage(
+            bgDeepGalaxyCanvas,
+            deepX,
+            deepY,
+            bgDeepGalaxyCanvas.width * deepScale,
+            bgDeepGalaxyCanvas.height * deepScale
+        );
 
-    nebulaClouds.forEach(n => {
-        const g = ctx.createRadialGradient(n.x + panX * 0.15, n.y + panY * 0.15, 10, n.x + panX * 0.15, n.y + panY * 0.15, n.r);
-        g.addColorStop(0, n.c1);
-        g.addColorStop(1, n.c2);
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(n.x + panX * 0.15, n.y + panY * 0.15, n.r, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    stars.forEach(s => {
-        s.twinkle += s.speed;
-        const sx = ((s.x + panX * s.depth) % w + w) % w;
-        const sy = ((s.y + panY * s.depth) % h + h) % h;
-        ctx.globalAlpha = Math.max(0.1, Math.min(1, s.alpha + Math.sin(s.twinkle) * 0.3));
-        ctx.fillStyle = s.color;
-        ctx.beginPath();
-        ctx.arc(sx, sy, s.radius, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    ctx.globalAlpha = 1.0;
+        const midScale = 1 + (zoom - 1) * 0.22;
+        const midX = (w * 0.5) - ((w * 0.5 + pad) * midScale) + panX * 0.28;
+        const midY = (h * 0.5) - ((h * 0.5 + pad) * midScale) + panY * 0.28;
+        ctx.drawImage(
+            bgMidStarsCanvas,
+            midX,
+            midY,
+            bgMidStarsCanvas.width * midScale,
+            bgMidStarsCanvas.height * midScale
+        );
+    } else {
+        ctx.fillStyle = "#02040a";
+        ctx.fillRect(0, 0, w, h);
+    }
 
     ctx.save();
     ctx.translate(panX, panY);
     ctx.scale(zoom, zoom);
 
-    const sunX = (w * 0.42);
-    const sunY = (h * 0.50);
+    const sunX = w * 0.42;
+    const sunY = h * 0.50;
 
+    const planetMap = {};
     currentMappedPlanets = planetsData.map(p => {
-        const angle = (p.initialAngle || 0) + (globalTime * (p.orbitSpeed || 0.015));
+        const speed = p.orbitSpeed || 0.05;
+        const angle = (p.initialAngle || 0) + (globalTime * speed);
         const r = p.orbitRadius || 100;
-        return {
+        const mapped = {
             ...p,
             canvasX: sunX + Math.cos(angle) * r,
             canvasY: sunY + Math.sin(angle) * r,
             currentAngle: angle
         };
+        planetMap[p.id] = mapped;
+        return mapped;
     });
 
     if (showOrbits) drawOrbitalTracks(sunX, sunY, currentMappedPlanets);
-    drawMainAsteroidBelt(sunX, sunY);
+    drawMainAsteroidBelt(sunX, sunY, dt);
     drawCentralSun(sunX, sunY);
-    drawSpaceCorridors(currentMappedPlanets);
+    drawSpaceCorridors(planetMap);
 
     if (showMST && mstData && mstData.mstEdges) {
-        drawMSTOverlay(currentMappedPlanets, mstData.mstEdges);
+        drawMSTOverlay(planetMap, mstData.mstEdges);
     }
 
     if (activeRouteData && activeRouteData.path && activeRouteData.path.length > 1) {
-        drawActiveMissionPath(currentMappedPlanets, activeRouteData.path);
+        drawActiveMissionPath(planetMap, activeRouteData.path);
     }
 
-    currentMappedPlanets.forEach(node => {
-        drawCelestialNode(node, sunX, sunY);
-    });
+    for (let i = 0; i < currentMappedPlanets.length; i++) {
+        drawCelestialNode(currentMappedPlanets[i], sunX, sunY);
+    }
 
     ctx.restore();
 }
 
 function drawCentralSun(sunX, sunY) {
-    const corona = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, 68);
-    corona.addColorStop(0, "rgba(254, 240, 138, 0.95)");
-    corona.addColorStop(0.28, "rgba(245, 158, 11, 0.55)");
-    corona.addColorStop(0.65, "rgba(234, 88, 12, 0.15)");
-    corona.addColorStop(1, "rgba(234, 88, 12, 0)");
-
-    ctx.fillStyle = corona;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, 68, 0, Math.PI * 2);
-    ctx.fill();
-
-    const core = ctx.createRadialGradient(sunX - 5, sunY - 5, 2, sunX, sunY, 22);
-    core.addColorStop(0, "#ffffff");
-    core.addColorStop(0.45, "#fef08a");
-    core.addColorStop(1, "#f59e0b");
-
-    ctx.fillStyle = core;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, 22, 0, Math.PI * 2);
-    ctx.fill();
-
+    if (sunCacheCanvas) {
+        ctx.drawImage(sunCacheCanvas, sunX - 80, sunY - 80);
+    }
     ctx.fillStyle = "#fde047";
     ctx.font = "bold 10px 'Orbitron', sans-serif";
     ctx.textAlign = "center";
@@ -379,51 +906,37 @@ function drawCentralSun(sunX, sunY) {
 
 function drawOrbitalTracks(sunX, sunY, mapped) {
     ctx.save();
-    mapped.forEach(p => {
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([4, 6]);
+    for (let i = 0; i < mapped.length; i++) {
+        const p = mapped[i];
         ctx.beginPath();
         ctx.arc(sunX, sunY, p.orbitRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = p.sector === "INNER" ? "rgba(56, 189, 248, 0.14)" : "rgba(148, 163, 184, 0.10)";
-        ctx.lineWidth = 1 / zoom;
-        ctx.setLineDash([4, 6]);
+        ctx.strokeStyle = p.sector === "INNER" ? "rgba(56, 189, 248, 0.15)" : "rgba(148, 163, 184, 0.11)";
         ctx.stroke();
-    });
+    }
     ctx.restore();
 }
 
-function drawMainAsteroidBelt(sunX, sunY) {
-    ctx.save();
-    beltAsteroids.forEach(ast => {
-        ast.angle += ast.speed * 0.015;
-        ast.selfRot += ast.rotSpeed;
-
-        const ax = sunX + Math.cos(ast.angle) * ast.orbitR;
-        const ay = sunY + Math.sin(ast.angle) * ast.orbitR;
-
-        ctx.save();
-        ctx.translate(ax, ay);
-        ctx.rotate(ast.selfRot);
-        ctx.beginPath();
-        for (let i = 0; i < ast.verts; i++) {
-            const a = (i / ast.verts) * Math.PI * 2;
-            const r = ast.size * ast.offsets[i];
-            if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-            else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-        }
-        ctx.closePath();
-        ctx.fillStyle = ast.shade;
-        ctx.fill();
-        ctx.restore();
-    });
-    ctx.restore();
+function drawMainAsteroidBelt(sunX, sunY, dt) {
+    if (asteroidSprites.length === 0) return;
+    for (let i = 0; i < beltAsteroids.length; i++) {
+        const ast = beltAsteroids[i];
+        ast.angle += ast.speed * dt;
+        const ax = sunX + Math.cos(ast.angle) * ast.orbitR - 6;
+        const ay = sunY + Math.sin(ast.angle) * ast.orbitR - 6;
+        ctx.drawImage(asteroidSprites[ast.spriteIdx], ax, ay);
+    }
 }
 
-function drawSpaceCorridors(mapped) {
+function drawSpaceCorridors(planetMap) {
     currentMappedEdges = [];
 
-    edgesData.forEach(edge => {
-        const a = mapped.find(p => p.id === edge.sourcePlanetId);
-        const b = mapped.find(p => p.id === edge.targetPlanetId);
-        if (!a || !b) return;
+    for (let i = 0; i < edgesData.length; i++) {
+        const edge = edgesData[i];
+        const a = planetMap[edge.sourcePlanetId];
+        const b = planetMap[edge.targetPlanetId];
+        if (!a || !b) continue;
 
         currentMappedEdges.push({
             edge,
@@ -435,26 +948,19 @@ function drawSpaceCorridors(mapped) {
             hoveredEdge.sourcePlanetId === edge.sourcePlanetId &&
             hoveredEdge.targetPlanetId === edge.targetPlanetId;
 
-        ctx.save();
         ctx.beginPath();
         ctx.moveTo(a.canvasX, a.canvasY);
         ctx.lineTo(b.canvasX, b.canvasY);
 
         if (edge.disrupted) {
             ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = (isHovered ? 3.5 : 2.2) / zoom;
+            ctx.lineWidth = (isHovered ? 3.2 : 2.0) / zoom;
             ctx.setLineDash([6, 4]);
-            ctx.shadowColor = "#ef4444";
-            ctx.shadowBlur = 10;
-        } else {
-            ctx.strokeStyle = isHovered ? "rgba(56, 189, 248, 0.75)" : "rgba(56, 189, 248, 0.16)";
-            ctx.lineWidth = (isHovered ? 2.5 : 1.0) / zoom;
-        }
-        ctx.stroke();
+            ctx.stroke();
+            ctx.setLineDash([]);
 
-        if (edge.disrupted) {
-            const mx = (a.canvasX + b.canvasX) / 2;
-            const my = (a.canvasY + b.canvasY) / 2;
+            const mx = (a.canvasX + b.canvasX) * 0.5;
+            const my = (a.canvasY + b.canvasY) * 0.5;
             ctx.fillStyle = "#ef4444";
             ctx.beginPath();
             ctx.arc(mx, my, 7 / zoom, 0, Math.PI * 2);
@@ -463,128 +969,247 @@ function drawSpaceCorridors(mapped) {
             ctx.font = `bold ${Math.max(8, 10 / zoom)}px sans-serif`;
             ctx.textAlign = "center";
             ctx.fillText("!", mx, my + 3.5 / zoom);
+        } else {
+            ctx.strokeStyle = isHovered ? "rgba(56, 189, 248, 0.78)" : "rgba(56, 189, 248, 0.16)";
+            ctx.lineWidth = (isHovered ? 2.4 : 1.0) / zoom;
+            ctx.stroke();
         }
-        ctx.restore();
-    });
+    }
 }
 
-function drawMSTOverlay(mapped, mstEdges) {
+function drawMSTOverlay(planetMap, mstEdges) {
     ctx.save();
-    ctx.strokeStyle = "#38ef7d";
-    ctx.lineWidth = 2.6 / zoom;
-    ctx.shadowColor = "#38ef7d";
-    ctx.shadowBlur = 12;
-
+    ctx.strokeStyle = "rgba(56, 239, 125, 0.25)";
+    ctx.lineWidth = 6 / zoom;
+    ctx.beginPath();
     mstEdges.forEach(link => {
-        const a = mapped.find(p => p.id === link.sourceId);
-        const b = mapped.find(p => p.id === link.targetId);
-        if (!a || !b) return;
-        ctx.beginPath();
-        ctx.moveTo(a.canvasX, a.canvasY);
-        ctx.lineTo(b.canvasX, b.canvasY);
-        ctx.stroke();
+        const a = planetMap[link.sourceId];
+        const b = planetMap[link.targetId];
+        if (a && b) {
+            ctx.moveTo(a.canvasX, a.canvasY);
+            ctx.lineTo(b.canvasX, b.canvasY);
+        }
     });
+    ctx.stroke();
+
+    ctx.strokeStyle = "#38ef7d";
+    ctx.lineWidth = 2.2 / zoom;
+    ctx.stroke();
     ctx.restore();
 }
 
-function drawActiveMissionPath(mapped, path) {
-    const coords = path.map(step => mapped.find(p => p.id === step.id)).filter(Boolean);
+// ============================================================================
+// Straight Graph-Edge Path Trajectory & Refueling Hold Schedule
+// ============================================================================
+function buildMapRouteSchedule(path, refuelStops) {
+    const refuelSet = new Set(refuelStops || []);
+    const schedule = [];
+    let cursor = 0;
+
+    for (let i = 0; i < path.length - 1; i++) {
+        // 1. Direct Graph Corridor Flight Leg
+        schedule.push({
+            type: "FLIGHT",
+            legIdx: i,
+            fromId: path[i].id,
+            toId: path[i + 1].id,
+            startUnit: cursor,
+            endUnit: cursor + 1.0
+        });
+        cursor += 1.0;
+
+        // 2. Stationary Orbital Refueling Hold at intermediate depot stops
+        const destNode = path[i + 1];
+        if (i < path.length - 2 && refuelSet.has(destNode.name)) {
+            schedule.push({
+                type: "REFUEL",
+                planetId: destNode.id,
+                planetName: destNode.name,
+                startUnit: cursor,
+                endUnit: cursor + 0.52
+            });
+            cursor += 0.52;
+        }
+    }
+    return schedule;
+}
+
+function drawActiveMissionPath(planetMap, path) {
+    const coords = [];
+    for (let i = 0; i < path.length; i++) {
+        const pt = planetMap[path[i].id];
+        if (pt) coords.push(pt);
+    }
     if (coords.length < 2) return;
 
     ctx.save();
-    ctx.beginPath();
-    ctx.strokeStyle = "#00f0ff";
-    ctx.lineWidth = 3.5 / zoom;
-    ctx.shadowColor = "#00f0ff";
-    ctx.shadowBlur = 18;
-    ctx.setLineDash([10, 6]);
-    ctx.lineDashOffset = -globalTime * 25;
 
-    coords.forEach((pt, idx) => {
-        if (idx === 0) ctx.moveTo(pt.canvasX, pt.canvasY);
+    // Build straight node-to-node graph path matching the network corridors
+    ctx.beginPath();
+    for (let i = 0; i < coords.length; i++) {
+        const pt = coords[i];
+        if (i === 0) ctx.moveTo(pt.canvasX, pt.canvasY);
         else ctx.lineTo(pt.canvasX, pt.canvasY);
-    });
+    }
+
+    // Outer luminous corridor aura
+    ctx.strokeStyle = "rgba(0, 240, 255, 0.22)";
+    ctx.lineWidth = 8 / zoom;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    // Crisp inner trajectory line
+    ctx.strokeStyle = "#e0f2fe";
+    ctx.lineWidth = 2.4 / zoom;
+    ctx.stroke();
+
+    // Animated energy flow overlay along the straight corridor path
+    ctx.strokeStyle = "#00f0ff";
+    ctx.lineWidth = 2.6 / zoom;
+    ctx.setLineDash([12, 8]);
+    ctx.lineDashOffset = -globalTime * 28;
     ctx.stroke();
     ctx.setLineDash([]);
 
-    const totalSegs = coords.length - 1;
-    const scaledPos = shipPulseProgress * totalSegs;
-    const segIdx = Math.min(totalSegs - 1, Math.floor(scaledPos));
-    const segT = scaledPos - segIdx;
+    // Determine active schedule segment (Flight vs Refueling Hold)
+    if (mapRouteSchedule.length === 0) {
+        mapRouteSchedule = buildMapRouteSchedule(path, activeRouteData.refuelStops || []);
+    }
 
-    const pStart = coords[segIdx];
-    const pEnd = coords[segIdx + 1];
-    const shipX = pStart.canvasX + (pEnd.canvasX - pStart.canvasX) * segT;
-    const shipY = pStart.canvasY + (pEnd.canvasY - pStart.canvasY) * segT;
+    const totalUnits = mapRouteSchedule[mapRouteSchedule.length - 1].endUnit;
+    const currentUnit = shipPulseProgress * totalUnits;
+    let activeItem = mapRouteSchedule[mapRouteSchedule.length - 1];
+    for (let i = 0; i < mapRouteSchedule.length; i++) {
+        if (currentUnit <= mapRouteSchedule[i].endUnit) {
+            activeItem = mapRouteSchedule[i];
+            break;
+        }
+    }
 
-    ctx.fillStyle = "#ffffff";
-    ctx.shadowColor = "#38ef7d";
-    ctx.shadowBlur = 15;
-    ctx.beginPath();
-    ctx.arc(shipX, shipY, 5.5 / zoom, 0, Math.PI * 2);
-    ctx.fill();
+    const itemSpan = Math.max(0.0001, activeItem.endUnit - activeItem.startUnit);
+    const localT = Math.max(0, Math.min(1, (currentUnit - activeItem.startUnit) / itemSpan));
 
+    if (activeItem.type === "REFUEL") {
+        // Spacecraft holds position in tight orbital formation beside the refueling station
+        const station = planetMap[activeItem.planetId] || coords[0];
+        const orbitAngle = station.currentAngle + Math.PI * 0.35;
+        const holdDist = 24;
+        const shipX = station.canvasX + Math.cos(orbitAngle) * holdDist;
+        const shipY = station.canvasY + Math.sin(orbitAngle) * holdDist;
+        const tangentHeading = orbitAngle + Math.PI * 0.5;
+
+        // Pulsing green cryogenic propellant transfer tether
+        ctx.save();
+        ctx.strokeStyle = "rgba(56, 239, 125, 0.85)";
+        ctx.lineWidth = 2 / zoom;
+        ctx.setLineDash([4, 4]);
+        ctx.lineDashOffset = -globalTime * 24;
+        ctx.beginPath();
+        ctx.moveTo(station.canvasX, station.canvasY);
+        ctx.lineTo(shipX, shipY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Expanding orbital refueling ring
+        const ringR = 16 + ((globalTime * 18) % 14);
+        ctx.strokeStyle = "rgba(250, 204, 21, 0.65)";
+        ctx.lineWidth = 1.4 / zoom;
+        ctx.beginPath();
+        ctx.arc(station.canvasX, station.canvasY, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Refueling status label
+        ctx.fillStyle = "#facc15";
+        ctx.font = `bold ${Math.max(9, 10 / zoom)}px 'Orbitron', sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(`REFUELING (${Math.round(localT * 100)}%)`, station.canvasX, station.canvasY - 26);
+        ctx.restore();
+
+        draw3DSpacecraft(shipX, shipY, tangentHeading, true);
+    } else {
+        // Spacecraft cruising straight along the active graph edge
+        const pStart = coords[activeItem.legIdx];
+        const pEnd = coords[activeItem.legIdx + 1];
+        const posX = pStart.canvasX + (pEnd.canvasX - pStart.canvasX) * localT;
+        const posY = pStart.canvasY + (pEnd.canvasY - pStart.canvasY) * localT;
+        const heading = Math.atan2(pEnd.canvasY - pStart.canvasY, pEnd.canvasX - pStart.canvasX);
+
+        draw3DSpacecraft(posX, posY, heading, false);
+    }
+
+    ctx.restore();
+}
+
+function draw3DSpacecraft(x, y, heading, isDockedRefueling = false) {
+    if (!shipSpriteCanvas) return;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(heading);
+
+    const shipScale = Math.max(0.48, 0.72 / Math.sqrt(zoom));
+    ctx.scale(shipScale, shipScale);
+
+    // Subtle idle thruster glow when stopped for refueling, full torch plume in cruise
+    const flicker = isDockedRefueling
+        ? 4 + Math.sin(globalTime * 14) * 1.5
+        : 16 + Math.sin(globalTime * 36) * 5 + Math.cos(globalTime * 52) * 3;
+
+    [-7, 7].forEach(py => {
+        const plume = ctx.createLinearGradient(-25, py, -25 - flicker, py);
+        plume.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+        plume.addColorStop(0.3, isDockedRefueling ? "rgba(250, 204, 21, 0.75)" : "rgba(0, 240, 255, 0.85)");
+        plume.addColorStop(0.7, "rgba(56, 239, 125, 0.45)");
+        plume.addColorStop(1, "rgba(56, 239, 125, 0)");
+
+        ctx.fillStyle = plume;
+        ctx.beginPath();
+        ctx.moveTo(-25, py - 2.5);
+        ctx.lineTo(-25 - flicker, py);
+        ctx.lineTo(-25, py + 2.5);
+        ctx.closePath();
+        ctx.fill();
+    });
+
+    ctx.drawImage(shipSpriteCanvas, -55, -55);
     ctx.restore();
 }
 
 function drawCelestialNode(node, sunX, sunY) {
     const x = node.canvasX;
     const y = node.canvasY;
-    const color = node.color || "#38bdf8";
     const nameLower = (node.name || "").toLowerCase();
     const isHovered = hoveredPlanet && hoveredPlanet.id === node.id;
 
     const lightAngle = Math.atan2(sunY - y, sunX - x);
-    const radius = nameLower.includes("jupiter") || nameLower.includes("saturn") ? 14 :
-        (nameLower.includes("luna") || nameLower.includes("europa") || nameLower.includes("titan") ? 8.5 : 11);
+    const radius = (nameLower.includes("jupiter") || nameLower.includes("saturn")) ? 16 :
+        (nameLower.includes("uranus") || nameLower.includes("neptune")) ? 13.5 :
+            (nameLower.includes("luna") || nameLower.includes("europa") || nameLower.includes("titan") || nameLower.includes("ceres")) ? 9.5 : 12.5;
 
-    ctx.save();
-    ctx.translate(x, y);
+    const spinSpeed = (node.orbitSpeed || 0.05) * 14 + 0.45;
+    const spinAngle = (node.initialAngle || 0) + globalTime * spinSpeed;
+
+    drawTexturedPlanet(ctx, node, x, y, radius, lightAngle, spinAngle);
 
     if (isHovered) {
-        ctx.beginPath();
-        ctx.arc(0, 0, radius + 8, 0, Math.PI * 2);
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-    }
-
-    if (nameLower.includes("saturn")) {
         ctx.save();
-        ctx.rotate(-0.42);
         ctx.beginPath();
-        ctx.ellipse(0, 0, radius * 2.2, radius * 0.65, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(250, 204, 21, 0.75)";
-        ctx.lineWidth = 3;
+        ctx.arc(x, y, radius + 7, 0, Math.PI * 2);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 3]);
         ctx.stroke();
         ctx.restore();
     }
 
-    const lx = Math.cos(lightAngle) * (radius * 0.45);
-    const ly = Math.sin(lightAngle) * (radius * 0.45);
-    const sphereGrad = ctx.createRadialGradient(lx, ly, radius * 0.1, 0, 0, radius);
-    sphereGrad.addColorStop(0, "#ffffff");
-    sphereGrad.addColorStop(0.35, color);
-    sphereGrad.addColorStop(1, "#090d16");
-
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.fillStyle = sphereGrad;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = isHovered ? 20 : 10;
-    ctx.fill();
-
     if (node.hasRefuelDepot) {
         ctx.beginPath();
-        ctx.arc(0, 0, radius + 3.5, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(56, 239, 125, 0.75)";
-        ctx.lineWidth = 1.4;
+        ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(56, 239, 125, 0.72)";
+        ctx.lineWidth = 1.3;
         ctx.stroke();
     }
-
-    ctx.restore();
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 10px 'Orbitron', sans-serif";
@@ -597,7 +1222,7 @@ function drawCelestialNode(node, sunX, sunY) {
 }
 
 // ============================================================================
-// 4. Robust Scaled Mouse Interactions & Hit Detection
+// 5. Robust Scaled Mouse Interactions & Hit Detection
 // ============================================================================
 function getCanvasMousePos(e) {
     const rect = canvas.getBoundingClientRect();
@@ -646,7 +1271,8 @@ function setupCanvasInteractions() {
         const wy = (pos.y - panY) / zoom;
 
         hoveredPlanet = null;
-        for (let p of currentMappedPlanets) {
+        for (let i = 0; i < currentMappedPlanets.length; i++) {
+            const p = currentMappedPlanets[i];
             if (Math.hypot(wx - p.canvasX, wy - p.canvasY) <= 24) {
                 hoveredPlanet = p;
                 break;
@@ -655,7 +1281,8 @@ function setupCanvasInteractions() {
 
         hoveredEdge = null;
         if (!hoveredPlanet) {
-            for (let item of currentMappedEdges) {
+            for (let i = 0; i < currentMappedEdges.length; i++) {
+                const item = currentMappedEdges[i];
                 if (pointToSegmentDistance(wx, wy, item.x1, item.y1, item.x2, item.y2) <= 8 / zoom) {
                     hoveredEdge = item.edge;
                     break;
@@ -678,7 +1305,8 @@ function setupCanvasInteractions() {
         const wy = (pos.y - panY) / zoom;
 
         let clickedPlanet = null;
-        for (let p of currentMappedPlanets) {
+        for (let i = 0; i < currentMappedPlanets.length; i++) {
+            const p = currentMappedPlanets[i];
             if (Math.hypot(wx - p.canvasX, wy - p.canvasY) <= 26) {
                 clickedPlanet = p;
                 break;
@@ -687,7 +1315,8 @@ function setupCanvasInteractions() {
 
         let clickedEdge = null;
         if (!clickedPlanet) {
-            for (let item of currentMappedEdges) {
+            for (let i = 0; i < currentMappedEdges.length; i++) {
+                const item = currentMappedEdges[i];
                 if (pointToSegmentDistance(wx, wy, item.x1, item.y1, item.x2, item.y2) <= 10 / zoom) {
                     clickedEdge = item.edge;
                     break;
@@ -713,8 +1342,14 @@ function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
 }
 
 // ============================================================================
-// 5. Backend API Actions & UI Handlers
+// 6. Backend API Actions & UI Handlers
 // ============================================================================
+function showCockpitLaunchButtons() {
+    document.getElementById("btnOpenCockpit")?.classList.remove("hidden");
+    document.getElementById("btnOpenCockpitTour")?.classList.remove("hidden");
+    document.getElementById("btnHudCockpit")?.classList.remove("hidden");
+}
+
 async function computeOptimalRoute() {
     const start = document.getElementById("startPlanet").value;
     const dest = document.getElementById("destPlanet").value;
@@ -745,8 +1380,10 @@ async function computeOptimalRoute() {
         }
 
         activeRouteData = data;
+        mapRouteSchedule = buildMapRouteSchedule(data.path, data.refuelStops || []);
         shipPulseProgress = 0;
         renderMissionTelemetry(data);
+        showCockpitLaunchButtons();
         refreshLeaderboard();
         showNotification(`Mission ${data.missionId} computed (${data.travelDuration}, $${data.calculatedCost.toLocaleString()}).`, "info");
     } catch (err) {
@@ -774,8 +1411,10 @@ async function computeMultiStopTour() {
         }
 
         activeRouteData = data;
+        mapRouteSchedule = buildMapRouteSchedule(data.path, data.refuelStops || []);
         shipPulseProgress = 0;
         renderMissionTelemetry(data);
+        showCockpitLaunchButtons();
         showNotification(`Multi-stop tour optimized across ${checked.length} colonies!`, "info");
     } catch (err) {
         console.error(err);
@@ -917,7 +1556,7 @@ function renderMissionTelemetry(data) {
 }
 
 // ============================================================================
-// 6. Full-Height Planetary Command Deck & Interactive Upgrades
+// 7. Planetary Command Deck with Live 3D Textured Globe & Depth-Sorted Probe
 // ============================================================================
 function openPlanetaryCommandDeck(planet) {
     selectedDeckPlanet = planet;
@@ -992,68 +1631,756 @@ function openPlanetaryCommandDeck(planet) {
 function closePlanetaryCommandDeck() {
     const deck = document.getElementById("planetCommandDeck");
     if (deck) deck.classList.add("hidden");
-    if (deckAnimId) cancelAnimationFrame(deckAnimId);
+    if (deckAnimId) {
+        cancelAnimationFrame(deckAnimId);
+        deckAnimId = null;
+    }
 }
 
 function startDeckPlanetAnimation(planet) {
     const pCanvas = document.getElementById("planetDetailCanvas");
     if (!pCanvas) return;
     const pCtx = pCanvas.getContext("2d");
-    let angle = 0;
+    let orbitAngle = 0;
+    let spinAngle = 0;
 
     function animatePlanet() {
-        angle += 0.015;
+        orbitAngle += 0.022;
+        spinAngle += 0.014;
+
         const w = pCanvas.width;
         const h = pCanvas.height;
         pCtx.clearRect(0, 0, w, h);
 
-        pCtx.strokeStyle = "rgba(56, 189, 248, 0.1)";
+        pCtx.strokeStyle = "rgba(56, 189, 248, 0.09)";
         pCtx.lineWidth = 1;
-        for (let x = 0; x < w; x += 25) { pCtx.beginPath(); pCtx.moveTo(x, 0); pCtx.lineTo(x, h); pCtx.stroke(); }
-        for (let y = 0; y < h; y += 25) { pCtx.beginPath(); pCtx.moveTo(0, y); pCtx.lineTo(w, y); pCtx.stroke(); }
+        for (let x = 0; x < w; x += 28) {
+            pCtx.beginPath();
+            pCtx.moveTo(x, 0);
+            pCtx.lineTo(x, h);
+            pCtx.stroke();
+        }
+        for (let y = 0; y < h; y += 28) {
+            pCtx.beginPath();
+            pCtx.moveTo(0, y);
+            pCtx.lineTo(w, y);
+            pCtx.stroke();
+        }
 
         const cx = w / 2;
         const cy = h / 2;
-        const r = 64;
-        const col = planet.color || "#38bdf8";
+        const r = 68;
+        const satX = cx + Math.cos(orbitAngle) * 116;
+        const satY = cy + Math.sin(orbitAngle) * 36;
+        const satBehind = Math.sin(orbitAngle) < 0;
 
-        const halo = pCtx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.45);
-        halo.addColorStop(0, col + "66");
-        halo.addColorStop(1, "rgba(0,0,0,0)");
-        pCtx.fillStyle = halo;
+        pCtx.strokeStyle = "rgba(56, 189, 248, 0.25)";
+        pCtx.lineWidth = 1.2;
         pCtx.beginPath();
-        pCtx.arc(cx, cy, r * 1.45, 0, Math.PI * 2);
-        pCtx.fill();
-
-        const bodyGrad = pCtx.createRadialGradient(cx - 24, cy - 24, 8, cx, cy, r);
-        bodyGrad.addColorStop(0, "#ffffff");
-        bodyGrad.addColorStop(0.35, col);
-        bodyGrad.addColorStop(1, "#050811");
-        pCtx.fillStyle = bodyGrad;
-        pCtx.beginPath();
-        pCtx.arc(cx, cy, r, 0, Math.PI * 2);
-        pCtx.fill();
-
-        const satX = cx + Math.cos(angle) * 96;
-        const satY = cy + Math.sin(angle) * 34;
-        pCtx.strokeStyle = "rgba(56, 189, 248, 0.35)";
-        pCtx.beginPath();
-        pCtx.ellipse(cx, cy, 96, 34, 0, 0, Math.PI * 2);
+        pCtx.ellipse(cx, cy, 116, 36, 0, Math.PI, Math.PI * 2);
         pCtx.stroke();
 
-        pCtx.fillStyle = "#38ef7d";
+        if (satBehind) {
+            drawDeckSatellite(pCtx, satX, satY, 0.8);
+        }
+
+        drawTexturedPlanet(pCtx, planet, cx, cy, r, -0.45, spinAngle);
+
+        pCtx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        pCtx.lineWidth = 1.2;
         pCtx.beginPath();
-        pCtx.arc(satX, satY, 4.5, 0, Math.PI * 2);
-        pCtx.fill();
+        pCtx.ellipse(cx, cy, 116, 36, 0, 0, Math.PI);
+        pCtx.stroke();
+
+        if (!satBehind) {
+            drawDeckSatellite(pCtx, satX, satY, 1.05);
+        }
 
         deckAnimId = requestAnimationFrame(animatePlanet);
     }
+
     if (deckAnimId) cancelAnimationFrame(deckAnimId);
     animatePlanet();
 }
 
+function drawDeckSatellite(pCtx, sx, sy, scale) {
+    pCtx.save();
+    pCtx.translate(sx, sy);
+    pCtx.scale(scale, scale);
+
+    pCtx.fillStyle = "#0284c7";
+    pCtx.fillRect(-11, -2, 8, 4);
+    pCtx.fillRect(3, -2, 8, 4);
+
+    pCtx.fillStyle = "#f8fafc";
+    pCtx.fillRect(-3, -3, 6, 6);
+
+    pCtx.fillStyle = "#38ef7d";
+    pCtx.beginPath();
+    pCtx.arc(0, 0, 2, 0, Math.PI * 2);
+    pCtx.fill();
+
+    pCtx.restore();
+}
+
 // ============================================================================
-// 7. UI Event Listeners & Toast Alerts
+// 8. First-Person Starship Cockpit Journey View
+// ============================================================================
+function openCockpitJourneyView() {
+    if (!activeRouteData || !activeRouteData.path || activeRouteData.path.length < 2) {
+        showNotification("Compute an optimal route first to launch Cockpit View.", "error");
+        return;
+    }
+
+    const win = document.getElementById("cockpitJourneyWindow");
+    cockpitCanvas = document.getElementById("cockpitCanvas");
+    if (!win || !cockpitCanvas) return;
+
+    cockpitCtx = cockpitCanvas.getContext("2d", { alpha: false });
+    buildCockpitJourneyLegs();
+    initCockpit3DParticles();
+
+    cockpitOpen = true;
+    cockpitPlaying = true;
+    cockpitProgress = 0;
+    cockpitLookX = 0;
+    cockpitLookY = 0;
+    cockpitTargetLookX = 0;
+    cockpitTargetLookY = 0;
+
+    const playBtn = document.getElementById("btnCockpitPlayPause");
+    if (playBtn) playBtn.innerText = "PAUSE";
+
+    const missionBadge = document.getElementById("cockpitMissionBadge");
+    if (missionBadge) {
+        const mId = activeRouteData.missionId || "TOUR";
+        const mode = activeRouteData.routeType || "BALANCED";
+        missionBadge.innerText = `${mId} // ${mode}`;
+    }
+
+    renderCockpitLegChecklist();
+    renderScrubberMarkers();
+
+    win.classList.remove("hidden");
+    resizeCockpitCanvas();
+
+    cockpitLastTime = performance.now();
+    if (cockpitAnimId) cancelAnimationFrame(cockpitAnimId);
+    cockpitLoop(cockpitLastTime);
+}
+
+function closeCockpitJourneyView() {
+    cockpitOpen = false;
+    const win = document.getElementById("cockpitJourneyWindow");
+    if (win) win.classList.add("hidden");
+    if (cockpitAnimId) {
+        cancelAnimationFrame(cockpitAnimId);
+        cockpitAnimId = null;
+    }
+}
+
+function resizeCockpitCanvas() {
+    if (!cockpitCanvas) return;
+    cockpitCanvas.width = window.innerWidth;
+    cockpitCanvas.height = window.innerHeight;
+}
+
+function buildCockpitJourneyLegs() {
+    const path = activeRouteData.path;
+    const refuelSet = new Set(activeRouteData.refuelStops || []);
+    const rawEdges = [];
+    let rawDistSum = 0;
+    let rawFuelSum = 0;
+
+    for (let i = 0; i < path.length - 1; i++) {
+        const u = path[i];
+        const v = path[i + 1];
+        const edge = edgesData.find(e =>
+            (e.sourcePlanetId === u.id && e.targetPlanetId === v.id) ||
+            (e.sourcePlanetId === v.id && e.targetPlanetId === u.id)
+        );
+        const baseDist = edge ? edge.baseDistanceMkm : 100;
+        const baseFuel = edge ? edge.baseFuelTons : 80;
+        rawDistSum += baseDist;
+        rawFuelSum += baseFuel;
+        rawEdges.push({ u, v, edge, baseDist, baseFuel });
+    }
+
+    const totalDist = activeRouteData.totalDistance || rawDistSum;
+    const totalFuel = activeRouteData.totalFuelTons || rawFuelSum;
+
+    // Weight legs with extra time share when an orbital refueling stop occurs
+    const weights = rawEdges.map((item, idx) => {
+        const willRefuel = refuelSet.has(item.v.name) && idx < rawEdges.length - 1;
+        return 1.0 + (willRefuel ? 0.45 : 0.0);
+    });
+    const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+    let cumStart = 0;
+
+    cockpitLegs = rawEdges.map((item, idx) => {
+        const distMkm = Math.round((item.baseDist / (rawDistSum || 1)) * totalDist * 10) / 10;
+        const fuelTons = Math.round((item.baseFuel / (rawFuelSum || 1)) * totalFuel * 10) / 10;
+        const share = weights[idx] / totalWeight;
+        const startNorm = cumStart;
+        const endNorm = idx === rawEdges.length - 1 ? 1.0 : Math.min(1.0, cumStart + share);
+        cumStart = endNorm;
+
+        const baseHazard = item.edge ? item.edge.radiationHazardMsv : 15;
+        const disrupted = item.edge ? item.edge.disrupted : false;
+        const disruptionReason = item.edge ? item.edge.disruptionReason : "Nominal";
+        const interference = item.edge ? item.edge.signalInterference : 0.1;
+        const radMsv = Math.round((baseHazard * (1 - shieldBonus) + (disrupted ? 85 : 0)) * 10) / 10;
+        const willRefuel = refuelSet.has(item.v.name) && idx < rawEdges.length - 1;
+        const hasAsteroids = item.u.id === "P6" || item.v.id === "P6" || item.u.sector !== item.v.sector;
+
+        return {
+            index: idx,
+            from: item.u,
+            to: item.v,
+            distMkm,
+            fuelTons,
+            radMsv,
+            interference: Math.min(0.99, interference + (disrupted ? 0.5 : 0)),
+            disrupted,
+            disruptionReason,
+            willRefuel,
+            hasAsteroids,
+            startNorm,
+            endNorm
+        };
+    });
+}
+
+function initCockpit3DParticles() {
+    cockpitStars = [];
+    const palette = ["#ffffff", "#bae6fd", "#fef08a", "#fed7aa", "#c4b5fd"];
+    for (let i = 0; i < 360; i++) {
+        cockpitStars.push({
+            x: (Math.random() - 0.5) * 2600,
+            y: (Math.random() - 0.5) * 1800,
+            z: Math.random() * 1100 + 20,
+            color: palette[i % palette.length],
+            size: Math.random() * 1.6 + 0.6
+        });
+    }
+
+    cockpitAsteroids = [];
+    for (let i = 0; i < 28; i++) {
+        cockpitAsteroids.push({
+            x: (Math.random() - 0.5) * 1900,
+            y: (Math.random() - 0.5) * 1200,
+            z: Math.random() * 1100 + 60,
+            rot: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 2.5,
+            scale: 0.7 + Math.random() * 1.4
+        });
+    }
+}
+
+function renderCockpitLegChecklist() {
+    const listEl = document.getElementById("cockpitLegList");
+    if (!listEl) return;
+
+    listEl.innerHTML = cockpitLegs.map((leg, idx) => `
+        <div class="c-leg-item" data-leg-idx="${idx}">
+            <div class="c-leg-route">
+                ${idx + 1}. ${leg.from.name.split(" ")[0]} &rarr; ${leg.to.name.split(" ")[0]}
+                ${leg.willRefuel ? ' <span style="color:#facc15;">[REFUEL]</span>' : ""}
+                ${leg.disrupted ? ' <span style="color:#ef4444;">[STORM]</span>' : ""}
+            </div>
+            <div class="c-leg-meta">${leg.distMkm} Mkm &bull; ${leg.fuelTons} t &bull; ${leg.radMsv} mSv</div>
+        </div>
+    `).join("");
+
+    listEl.querySelectorAll(".c-leg-item").forEach(item => {
+        item.addEventListener("click", () => {
+            const idx = parseInt(item.dataset.legIdx, 10);
+            if (!isNaN(idx) && cockpitLegs[idx]) {
+                cockpitProgress = cockpitLegs[idx].startNorm + 0.001;
+                cockpitPlaying = true;
+                const playBtn = document.getElementById("btnCockpitPlayPause");
+                if (playBtn) playBtn.innerText = "PAUSE";
+            }
+        });
+    });
+}
+
+function renderScrubberMarkers() {
+    const container = document.getElementById("cockpitMarkers");
+    if (!container) return;
+
+    container.innerHTML = cockpitLegs.map(leg => {
+        const pct = (leg.endNorm * 100).toFixed(1);
+        return `<span class="scrub-dot ${leg.willRefuel ? "refuel" : ""}" style="left:${pct}%;" title="${leg.to.name}"></span>`;
+    }).join("");
+}
+
+function cockpitLoop(now) {
+    if (!cockpitOpen) return;
+    const dt = Math.min(0.05, (now - cockpitLastTime) / 1000);
+    cockpitLastTime = now;
+
+    // Responsive, lively pilot head-look parallax
+    cockpitLookX += (cockpitTargetLookX - cockpitLookX) * 0.14;
+    cockpitLookY += (cockpitTargetLookY - cockpitLookY) * 0.14;
+
+    // Calmer mission flight progression (~9.5 seconds per leg at 1x, ~19s at 0.5x)
+    if (cockpitPlaying && cockpitProgress < 1.0) {
+        const legCount = Math.max(1, cockpitLegs.length);
+        const baseRate = 1.0 / (legCount * 9.5);
+        cockpitProgress = Math.min(1.0, cockpitProgress + dt * baseRate * cockpitSpeedMult);
+        if (cockpitProgress >= 1.0) {
+            cockpitPlaying = false;
+            const playBtn = document.getElementById("btnCockpitPlayPause");
+            if (playBtn) playBtn.innerText = "REPLAY";
+        }
+    }
+
+    const scrubber = document.getElementById("cockpitScrubber");
+    if (scrubber) {
+        scrubber.value = Math.round(cockpitProgress * 1000);
+    }
+
+    // Determine active leg & local leg progress [0..1]
+    let activeLeg = cockpitLegs[cockpitLegs.length - 1];
+    for (let i = 0; i < cockpitLegs.length; i++) {
+        if (cockpitProgress <= cockpitLegs[i].endNorm || i === cockpitLegs.length - 1) {
+            activeLeg = cockpitLegs[i];
+            break;
+        }
+    }
+    const legSpan = Math.max(0.0001, activeLeg.endNorm - activeLeg.startNorm);
+    const localT = Math.max(0, Math.min(1, (cockpitProgress - activeLeg.startNorm) / legSpan));
+
+    // When leg includes a scheduled refuel stop, flight takes 0..0.72 and stationary refueling hold takes 0.72..1.0
+    const refuelThreshold = 0.72;
+    const isRefuelingPhase = activeLeg.willRefuel && localT >= refuelThreshold && cockpitProgress < 0.999;
+    const flightT = activeLeg.willRefuel
+        ? Math.min(1.0, localT / refuelThreshold)
+        : localT;
+    const refuelT = isRefuelingPhase
+        ? Math.min(1.0, (localT - refuelThreshold) / (1.0 - refuelThreshold))
+        : 0;
+
+    renderCockpitScene(dt, activeLeg, flightT, isRefuelingPhase, refuelT);
+    updateCockpitTelemetryHUD(activeLeg, flightT, isRefuelingPhase, refuelT);
+
+    cockpitAnimId = requestAnimationFrame(cockpitLoop);
+}
+
+function renderCockpitScene(dt, activeLeg, flightT, isRefuelingPhase, refuelT) {
+    const w = cockpitCanvas.width;
+    const h = cockpitCanvas.height;
+    const cx = w * 0.5 + cockpitLookX;
+    const cy = h * 0.48 + cockpitLookY;
+
+    // Deep space backdrop
+    const bg = cockpitCtx.createRadialGradient(cx, cy, 30, cx, cy, Math.max(w, h) * 0.85);
+    bg.addColorStop(0, activeLeg.disrupted ? "#1e0914" : "#071124");
+    bg.addColorStop(0.6, "#02050d");
+    bg.addColorStop(1, "#010205");
+    cockpitCtx.fillStyle = bg;
+    cockpitCtx.fillRect(0, 0, w, h);
+
+    // Distant Sol Corona Glow with depth parallax
+    const sunScreenX = w * 0.24 + cockpitLookX * 0.45;
+    const sunScreenY = h * 0.26 + cockpitLookY * 0.45;
+    const sunScale = activeLeg.to.sector === "INNER" ? 1.0 : (activeLeg.to.sector === "BELT" ? 0.55 : 0.32);
+    if (sunCacheCanvas) {
+        const sSize = 150 * sunScale;
+        cockpitCtx.drawImage(sunCacheCanvas, sunScreenX - sSize * 0.5, sunScreenY - sSize * 0.5, sSize, sSize);
+    }
+
+    // 3D Forward-Streaming Starfield (slows nearly to a halt during orbital refueling)
+    const velocity = cockpitPlaying
+        ? (isRefuelingPhase ? 6 : 240 * cockpitSpeedMult)
+        : 8;
+    const fov = Math.min(w, h) * 0.55;
+
+    for (let i = 0; i < cockpitStars.length; i++) {
+        const s = cockpitStars[i];
+        const prevZ = s.z;
+        s.z -= velocity * dt;
+        if (s.z <= 8) {
+            s.x = (Math.random() - 0.5) * 2600;
+            s.y = (Math.random() - 0.5) * 1800;
+            s.z = 1120;
+            continue;
+        }
+
+        const sx = cx + (s.x / s.z) * fov;
+        const sy = cy + (s.y / s.z) * fov;
+        if (sx < -40 || sx > w + 40 || sy < -40 || sy > h + 40) continue;
+
+        const alpha = Math.min(1, (1120 - s.z) / 500);
+        cockpitCtx.strokeStyle = s.color;
+        cockpitCtx.fillStyle = s.color;
+        cockpitCtx.globalAlpha = alpha;
+
+        if (cockpitPlaying && !isRefuelingPhase && cockpitSpeedMult >= 0.5) {
+            const px = cx + (s.x / prevZ) * fov;
+            const py = cy + (s.y / prevZ) * fov;
+            cockpitCtx.lineWidth = Math.max(0.8, (1 - s.z / 1120) * 2.2);
+            cockpitCtx.beginPath();
+            cockpitCtx.moveTo(px, py);
+            cockpitCtx.lineTo(sx, sy);
+            cockpitCtx.stroke();
+        } else {
+            const rad = Math.max(0.7, (1 - s.z / 1120) * s.size * 1.9);
+            cockpitCtx.beginPath();
+            cockpitCtx.arc(sx, sy, rad, 0, Math.PI * 2);
+            cockpitCtx.fill();
+        }
+    }
+    cockpitCtx.globalAlpha = 1.0;
+
+    // 3D Passing Asteroids when crossing Main Belt
+    if (activeLeg.hasAsteroids) {
+        for (let i = 0; i < cockpitAsteroids.length; i++) {
+            const ast = cockpitAsteroids[i];
+            ast.z -= velocity * 1.2 * dt;
+            ast.rot += ast.rotSpeed * dt;
+            if (ast.z <= 12) {
+                ast.x = (Math.random() - 0.5) * 1900;
+                ast.y = (Math.random() - 0.5) * 1200;
+                ast.z = 1120;
+                continue;
+            }
+            const ax = cx + (ast.x / ast.z) * fov;
+            const ay = cy + (ast.y / ast.z) * fov;
+            const aScale = Math.max(0.3, (1 - ast.z / 1120) * 3.8 * ast.scale);
+
+            cockpitCtx.save();
+            cockpitCtx.translate(ax, ay);
+            cockpitCtx.rotate(ast.rot);
+            cockpitCtx.scale(aScale, aScale);
+            cockpitCtx.fillStyle = "#64748b";
+            cockpitCtx.strokeStyle = "#94a3b8";
+            cockpitCtx.lineWidth = 0.8;
+            cockpitCtx.beginPath();
+            cockpitCtx.moveTo(-8, -4);
+            cockpitCtx.lineTo(0, -9);
+            cockpitCtx.lineTo(9, -3);
+            cockpitCtx.lineTo(6, 7);
+            cockpitCtx.lineTo(-5, 8);
+            cockpitCtx.closePath();
+            cockpitCtx.fill();
+            cockpitCtx.stroke();
+            cockpitCtx.restore();
+        }
+    }
+
+    // 3D Approaching Target Planet (Holds steady in close orbit during refueling)
+    const approachCurve = Math.pow(flightT, 2.25);
+    const baseTargetR = (activeLeg.to.name.includes("Jupiter") || activeLeg.to.name.includes("Saturn")) ? 165 : 132;
+    const planetRadius = 7 + approachCurve * baseTargetR;
+    const planetX = cx + Math.sin(flightT * Math.PI) * 38;
+    const planetY = cy - 12 + approachCurve * 26;
+    const lightAngle = Math.atan2(sunScreenY - planetY, sunScreenX - planetX);
+    const spinAngle = performance.now() * 0.00035 + activeLeg.index;
+
+    drawTexturedPlanet(cockpitCtx, activeLeg.to, planetX, planetY, planetRadius, lightAngle, spinAngle);
+
+    // Holographic Target Acquisition Bracket around Approaching Planet
+    const bracketR = planetRadius + 16;
+    const bLen = Math.min(22, bracketR * 0.42);
+    cockpitCtx.save();
+    cockpitCtx.strokeStyle = isRefuelingPhase
+        ? "rgba(250, 204, 21, 0.9)"
+        : (activeLeg.disrupted ? "rgba(239, 68, 68, 0.85)" : "rgba(0, 240, 255, 0.78)");
+    cockpitCtx.lineWidth = 1.6;
+
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
+        const bx = planetX + sx * bracketR;
+        const by = planetY + sy * bracketR;
+        cockpitCtx.beginPath();
+        cockpitCtx.moveTo(bx, by - sy * bLen);
+        cockpitCtx.lineTo(bx, by);
+        cockpitCtx.lineTo(bx - sx * bLen, by);
+        cockpitCtx.stroke();
+    });
+
+    const remainLegDist = Math.max(0, activeLeg.distMkm * (1 - flightT)).toFixed(1);
+    cockpitCtx.fillStyle = isRefuelingPhase ? "#facc15" : "#00f0ff";
+    cockpitCtx.font = "bold 11px 'Orbitron', sans-serif";
+    cockpitCtx.textAlign = "center";
+    const bracketLabel = isRefuelingPhase
+        ? `ORBITAL STATION-KEEPING // REFUELING (${Math.round(refuelT * 100)}%)`
+        : `TARGET: ${activeLeg.to.name.toUpperCase()} [${remainLegDist} Mkm]`;
+    cockpitCtx.fillText(bracketLabel, planetX, planetY - bracketR - 10);
+    cockpitCtx.restore();
+
+    // Solar Flare / Radiation Storm Visual Overlay on Windshield
+    if (activeLeg.disrupted && !isRefuelingPhase) {
+        const pulse = 0.14 + Math.sin(performance.now() * 0.012) * 0.06;
+        const stormGrad = cockpitCtx.createRadialGradient(cx, cy, w * 0.15, cx, cy, w * 0.65);
+        stormGrad.addColorStop(0, "rgba(239, 68, 68, 0)");
+        stormGrad.addColorStop(1, `rgba(239, 68, 68, ${pulse.toFixed(3)})`);
+        cockpitCtx.fillStyle = stormGrad;
+        cockpitCtx.fillRect(0, 0, w, h);
+    }
+
+    // Cryogenic Refueling Orbital Stream Effect when docked
+    if (isRefuelingPhase) {
+        cockpitCtx.save();
+        cockpitCtx.strokeStyle = "rgba(56, 239, 125, 0.72)";
+        cockpitCtx.lineWidth = 2.5;
+        cockpitCtx.setLineDash([8, 10]);
+        cockpitCtx.lineDashOffset = -performance.now() * 0.09;
+        cockpitCtx.beginPath();
+        cockpitCtx.moveTo(planetX, planetY);
+        cockpitCtx.lineTo(w * 0.5 - cockpitLookX * 0.35, h * 0.85 - cockpitLookY * 0.35);
+        cockpitCtx.stroke();
+        cockpitCtx.restore();
+    }
+
+    // Center Flight Reticle (tracks gently with pilot head movement)
+    drawCockpitReticle(w * 0.5 + cockpitLookX * 0.25, h * 0.48 + cockpitLookY * 0.25);
+
+    // Foreground Starship Bridge Canopy Frame
+    drawStarshipCanopyFrame(w, h);
+}
+
+function drawCockpitReticle(cx, cy) {
+    cockpitCtx.save();
+    cockpitCtx.strokeStyle = "rgba(56, 189, 248, 0.36)";
+    cockpitCtx.lineWidth = 1.2;
+
+    cockpitCtx.beginPath();
+    cockpitCtx.arc(cx, cy, 42, -0.35, 0.35);
+    cockpitCtx.stroke();
+    cockpitCtx.beginPath();
+    cockpitCtx.arc(cx, cy, 42, Math.PI - 0.35, Math.PI + 0.35);
+    cockpitCtx.stroke();
+
+    cockpitCtx.beginPath();
+    cockpitCtx.moveTo(cx - 12, cy);
+    cockpitCtx.lineTo(cx - 4, cy);
+    cockpitCtx.moveTo(cx + 4, cy);
+    cockpitCtx.lineTo(cx + 12, cy);
+    cockpitCtx.moveTo(cx, cy - 10);
+    cockpitCtx.lineTo(cx, cy - 4);
+    cockpitCtx.stroke();
+
+    cockpitCtx.restore();
+}
+
+function drawStarshipCanopyFrame(w, h) {
+    const ox = -cockpitLookX * 0.38;
+    const oy = -cockpitLookY * 0.38;
+
+    cockpitCtx.save();
+
+    const glassVignette = cockpitCtx.createRadialGradient(w * 0.5, h * 0.48, Math.min(w, h) * 0.36, w * 0.5, h * 0.48, Math.max(w, h) * 0.72);
+    glassVignette.addColorStop(0, "rgba(56, 189, 248, 0)");
+    glassVignette.addColorStop(0.85, "rgba(14, 165, 233, 0.05)");
+    glassVignette.addColorStop(1, "rgba(2, 6, 18, 0.75)");
+    cockpitCtx.fillStyle = glassVignette;
+    cockpitCtx.fillRect(0, 0, w, h);
+
+    cockpitCtx.fillStyle = "#060b16";
+    cockpitCtx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+    cockpitCtx.lineWidth = 1.5;
+
+    // Left Angled A-Pillar Strut
+    cockpitCtx.beginPath();
+    cockpitCtx.moveTo(-80, -80);
+    cockpitCtx.lineTo(w * 0.13 + ox, -80);
+    cockpitCtx.lineTo(w * 0.04 + ox, h * 0.78 + oy);
+    cockpitCtx.lineTo(-80, h + 80);
+    cockpitCtx.closePath();
+    cockpitCtx.fill();
+    cockpitCtx.stroke();
+
+    // Right Angled A-Pillar Strut
+    cockpitCtx.beginPath();
+    cockpitCtx.moveTo(w + 80, -80);
+    cockpitCtx.lineTo(w * 0.87 + ox, -80);
+    cockpitCtx.lineTo(w * 0.96 + ox, h * 0.78 + oy);
+    cockpitCtx.lineTo(w + 80, h + 80);
+    cockpitCtx.closePath();
+    cockpitCtx.fill();
+    cockpitCtx.stroke();
+
+    // Lower Starship Dashboard Cowling
+    cockpitCtx.beginPath();
+    cockpitCtx.moveTo(-80, h + 80);
+    cockpitCtx.lineTo(w * 0.04 + ox, h * 0.78 + oy);
+    cockpitCtx.lineTo(w * 0.28 + ox, h * 0.87 + oy);
+    cockpitCtx.lineTo(w * 0.72 + ox, h * 0.87 + oy);
+    cockpitCtx.lineTo(w * 0.96 + ox, h * 0.78 + oy);
+    cockpitCtx.lineTo(w + 80, h + 80);
+    cockpitCtx.closePath();
+    cockpitCtx.fill();
+    cockpitCtx.stroke();
+
+    cockpitCtx.restore();
+}
+
+function updateCockpitTelemetryHUD(activeLeg, flightT, isRefuelingPhase, refuelT) {
+    let currentFuel = maxFuelTons;
+    let cumRad = 0;
+    let distTraveled = 0;
+
+    for (let i = 0; i < activeLeg.index; i++) {
+        const leg = cockpitLegs[i];
+        currentFuel = Math.max(0, currentFuel - leg.fuelTons);
+        if (leg.willRefuel) currentFuel = maxFuelTons;
+        cumRad += leg.radMsv;
+        distTraveled += leg.distMkm;
+    }
+
+    currentFuel = Math.max(0, currentFuel - activeLeg.fuelTons * flightT);
+    if (isRefuelingPhase) {
+        currentFuel = currentFuel + (maxFuelTons - currentFuel) * refuelT;
+    }
+    cumRad += activeLeg.radMsv * flightT;
+    distTraveled += activeLeg.distMkm * flightT;
+
+    const totalDist = activeRouteData.totalDistance || 1;
+    const distRemain = Math.max(0, totalDist - distTraveled);
+    const totalHazard = Math.max(1, activeRouteData.totalHazard || 100);
+
+    const legTitle = document.getElementById("cockpitLegTitle");
+    if (legTitle) {
+        legTitle.innerText = `LEG ${activeLeg.index + 1}/${cockpitLegs.length}: ${activeLeg.from.name.toUpperCase()} → ${activeLeg.to.name.toUpperCase()}`;
+    }
+
+    const statusPill = document.getElementById("cockpitFlightStatus");
+    if (statusPill) {
+        statusPill.classList.remove("warning", "refuel");
+        if (cockpitProgress >= 1.0) {
+            statusPill.innerText = `DESTINATION ORBIT REACHED // ${activeLeg.to.name.toUpperCase()}`;
+        } else if (isRefuelingPhase) {
+            statusPill.classList.add("refuel");
+            statusPill.innerText = `THRUSTERS IDLE // REFUELING AT ${activeLeg.to.name.toUpperCase()} (${Math.round(refuelT * 100)}%)`;
+        } else if (activeLeg.disrupted) {
+            statusPill.classList.add("warning");
+            statusPill.innerText = `ALERT: ${activeLeg.disruptionReason.toUpperCase()} TURBULENCE`;
+        } else {
+            statusPill.innerText = `FUSION TORCH CRUISE // ${cockpitSpeedMult}x THRUST`;
+        }
+    }
+
+    const fuelPct = Math.min(100, Math.max(0, (currentFuel / maxFuelTons) * 100));
+    const fuelValEl = document.getElementById("cockpitFuelVal");
+    const fuelBarEl = document.getElementById("cockpitFuelBar");
+    if (fuelValEl) fuelValEl.innerText = `${currentFuel.toFixed(1)} / ${maxFuelTons} t`;
+    if (fuelBarEl) fuelBarEl.style.width = `${fuelPct.toFixed(1)}%`;
+
+    const radPct = Math.min(100, (cumRad / totalHazard) * 100);
+    const radValEl = document.getElementById("cockpitRadVal");
+    const radBarEl = document.getElementById("cockpitRadBar");
+    if (radValEl) radValEl.innerText = `${cumRad.toFixed(1)} mSv`;
+    if (radBarEl) radBarEl.style.width = `${radPct.toFixed(1)}%`;
+
+    const velocityKms = cockpitProgress >= 1.0 ? 0 : (isRefuelingPhase ? 0 : Math.round(214 * cockpitSpeedMult));
+    const liveLatency = Math.round(((distTraveled * 3.335) / 60.0) * 10) / 10;
+
+    document.getElementById("cockpitSpeedVal").innerText = isRefuelingPhase ? "0 km/s (DOCKED)" : `${velocityKms} km/s`;
+    document.getElementById("cockpitDistRemainVal").innerText = `${distRemain.toFixed(1)} Mkm`;
+    document.getElementById("cockpitLatencyVal").innerText = `${liveLatency} min`;
+    document.getElementById("cockpitNoiseVal").innerText = `${Math.round(activeLeg.interference * 100)}%`;
+
+    document.getElementById("cockpitTargetSector").innerText = `${activeLeg.to.sector || "SOLAR"} SECTOR`;
+    document.getElementById("cockpitTargetDist").innerText = `${Math.max(0, activeLeg.distMkm * (1 - flightT)).toFixed(1)} Mkm`;
+    document.getElementById("cockpitTargetName").innerText = activeLeg.to.name.toUpperCase();
+    document.getElementById("cockpitTargetAtmo").innerText = `Atmosphere: ${activeLeg.to.atmosphere || "Vacuum"}`;
+
+    const refuelNote = document.getElementById("cockpitTargetRefuel");
+    if (refuelNote) {
+        if (activeLeg.willRefuel) {
+            refuelNote.innerText = `REFUEL DEPOT: SCHEDULED ($${activeLeg.to.refuelCostPerTon}/t)`;
+            refuelNote.style.color = "#facc15";
+        } else if (activeLeg.to.hasRefuelDepot) {
+            refuelNote.innerText = `REFUEL DEPOT: AVAILABLE ($${activeLeg.to.refuelCostPerTon}/t)`;
+            refuelNote.style.color = "#38ef7d";
+        } else {
+            refuelNote.innerText = "NO PROPELLANT DEPOT AT WAYPOINT";
+            refuelNote.style.color = "#94a3b8";
+        }
+    }
+
+    document.querySelectorAll("#cockpitLegList .c-leg-item").forEach((el, idx) => {
+        el.classList.toggle("done", idx < activeLeg.index || cockpitProgress >= 1.0);
+        el.classList.toggle("active", idx === activeLeg.index && cockpitProgress < 1.0);
+    });
+
+    const pctDone = Math.round(cockpitProgress * 100);
+    const remainDaysTotal = distRemain / 18.5;
+    const remDays = Math.floor(remainDaysTotal);
+    const remHours = Math.round((remainDaysTotal - remDays) * 24);
+    const etaEl = document.getElementById("cockpitEtaLabel");
+    if (etaEl) {
+        etaEl.innerText = `${pctDone}% // ETA ${remDays}d ${remHours}h`;
+    }
+}
+
+function setupCockpitListeners() {
+    document.getElementById("btnOpenCockpit")?.addEventListener("click", openCockpitJourneyView);
+    document.getElementById("btnOpenCockpitTour")?.addEventListener("click", openCockpitJourneyView);
+    document.getElementById("btnHudCockpit")?.addEventListener("click", openCockpitJourneyView);
+    document.getElementById("btnCloseCockpit")?.addEventListener("click", closeCockpitJourneyView);
+
+    document.getElementById("btnToggleCockpitHud")?.addEventListener("click", (e) => {
+        const win = document.getElementById("cockpitJourneyWindow");
+        if (!win) return;
+        const minimal = win.classList.toggle("minimal-hud");
+        e.target.innerText = minimal ? "HUD: MINIMAL" : "HUD: FULL";
+    });
+
+    document.getElementById("btnCockpitPlayPause")?.addEventListener("click", (e) => {
+        if (cockpitProgress >= 1.0) {
+            cockpitProgress = 0;
+            cockpitPlaying = true;
+            e.target.innerText = "PAUSE";
+            return;
+        }
+        cockpitPlaying = !cockpitPlaying;
+        e.target.innerText = cockpitPlaying ? "PAUSE" : "RESUME";
+    });
+
+    document.getElementById("btnCockpitReplay")?.addEventListener("click", () => {
+        cockpitProgress = 0;
+        cockpitPlaying = true;
+        const playBtn = document.getElementById("btnCockpitPlayPause");
+        if (playBtn) playBtn.innerText = "PAUSE";
+    });
+
+    document.querySelectorAll(".warp-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".warp-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            cockpitSpeedMult = parseFloat(btn.dataset.speed) || 1;
+        });
+    });
+
+    document.getElementById("cockpitScrubber")?.addEventListener("input", (e) => {
+        cockpitProgress = Math.max(0, Math.min(1, parseFloat(e.target.value) / 1000));
+    });
+
+    const cockpitWin = document.getElementById("cockpitJourneyWindow");
+    cockpitWin?.addEventListener("mousemove", (e) => {
+        const nx = (e.clientX / window.innerWidth) - 0.5;
+        const ny = (e.clientY / window.innerHeight) - 0.5;
+        cockpitTargetLookX = -nx * 240;
+        cockpitTargetLookY = -ny * 165;
+    });
+
+    cockpitWin?.addEventListener("mouseleave", () => {
+        cockpitTargetLookX = 0;
+        cockpitTargetLookY = 0;
+    });
+
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && cockpitOpen) {
+            closeCockpitJourneyView();
+        }
+    });
+}
+
+// ============================================================================
+// 9. UI Event Listeners & Toast Alerts
 // ============================================================================
 function setupControlListeners() {
     const toggleBtn = document.getElementById("btnToggleSidebar");
@@ -1077,7 +2404,9 @@ function setupControlListeners() {
     });
 
     document.getElementById("btnResetView")?.addEventListener("click", () => {
-        zoom = 1.0; panX = 0; panY = 0;
+        zoom = 1.0;
+        panX = 0;
+        panY = 0;
     });
 
     document.getElementById("btnToggleOrbits")?.addEventListener("click", (e) => {
@@ -1143,7 +2472,7 @@ function showNotification(message, type = "info") {
     const toast = document.createElement("div");
     const isErr = type === "error";
     toast.style.cssText = `
-        background: ${isErr ? "rgba(220, 38, 38, 0.92)" : "rgba(14, 165, 233, 0.92)"};
+        background: ${isErr ? "rgba(220, 38, 38, 0.94)" : "rgba(14, 165, 233, 0.94)"};
         border: 1px solid ${isErr ? "#fca5a5" : "#7dd3fc"};
         color: #ffffff;
         padding: 10px 15px;
@@ -1152,7 +2481,7 @@ function showNotification(message, type = "info") {
         font-size: 13px;
         font-weight: 700;
         box-shadow: 0 6px 18px rgba(0,0,0,0.45);
-        transition: all 0.3s ease;
+        transition: opacity 0.3s ease;
     `;
     toast.innerText = message;
     container.appendChild(toast);

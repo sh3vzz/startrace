@@ -43,7 +43,7 @@
             </div>
         </div>
 
-        <!-- Ship Status Floating Pill (Top-Left below Header) -->
+        <!-- Ship Status Floating Pill (Bottom-Left) -->
         <div class="ship-hud-pill">
             <div class="hud-stat">
                 <span class="hud-lbl">MAX FUEL TANK</span>
@@ -59,6 +59,9 @@
                 <span class="hud-lbl">TIP</span>
                 <span class="hud-tip">Click any Planet for Command Deck &bull; Click any Lane to trigger Space Weather</span>
             </div>
+            <button id="btnHudCockpit" class="hud-cockpit-btn hidden" title="Enter First-Person Starship Cockpit View">
+                COCKPIT VIEW
+            </button>
         </div>
 
         <canvas id="galaxyCanvas"></canvas>
@@ -115,6 +118,7 @@
                 </div>
 
                 <button id="btnCalculate" class="btn-glow">COMPUTE OPTIMAL ROUTE</button>
+                <button id="btnOpenCockpit" class="btn-cockpit hidden">LAUNCH COCKPIT JOURNEY VIEW</button>
 
                 <!-- Telemetry Metrics Grid -->
                 <div class="metrics-section">
@@ -164,6 +168,7 @@
                     <!-- Populated dynamically with planet checkboxes -->
                 </div>
                 <button id="btnComputeTour" class="btn-glow secondary">OPTIMIZE MULTI-STOP TOUR</button>
+                <button id="btnOpenCockpitTour" class="btn-cockpit hidden">LAUNCH COCKPIT JOURNEY VIEW</button>
 
                 <div class="divider-line"></div>
 
@@ -261,6 +266,111 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- First-Person Starship Cockpit Journey Window -->
+<div id="cockpitJourneyWindow" class="cockpit-window hidden">
+    <canvas id="cockpitCanvas"></canvas>
+
+    <!-- Top Bridge HUD Header -->
+    <div class="cockpit-top-hud">
+        <div class="cockpit-brand">
+            <span id="cockpitMissionBadge" class="cockpit-badge">MSN-101 // BALANCED</span>
+            <h2 id="cockpitLegTitle">LEG 1/1: ORIGIN &rarr; DESTINATION</h2>
+        </div>
+
+        <div id="cockpitFlightStatus" class="cockpit-status-pill">FUSION TORCH CRUISE // NOMINAL</div>
+
+        <div class="cockpit-top-actions">
+            <button id="btnToggleCockpitHud" class="cockpit-btn">HUD: FULL</button>
+            <button id="btnCloseCockpit" class="cockpit-btn exit">EXIT COCKPIT [ESC]</button>
+        </div>
+    </div>
+
+    <!-- Left Canopy HUD: Live Ship & Environment Telemetry -->
+    <div class="cockpit-side-panel left cockpit-hud-element">
+        <div class="c-panel-title">PROPULSION &amp; REACTOR</div>
+
+        <div class="c-gauge-block">
+            <div class="c-gauge-head">
+                <span>PROPELLANT RESERVE</span>
+                <span id="cockpitFuelVal" class="c-val green">600.0 / 600 t</span>
+            </div>
+            <div class="c-bar-track">
+                <div id="cockpitFuelBar" class="c-bar-fill green" style="width: 100%;"></div>
+            </div>
+        </div>
+
+        <div class="c-gauge-block">
+            <div class="c-gauge-head">
+                <span>CUMULATIVE RADIATION</span>
+                <span id="cockpitRadVal" class="c-val amber">0.0 mSv</span>
+            </div>
+            <div class="c-bar-track">
+                <div id="cockpitRadBar" class="c-bar-fill amber" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <div class="c-readout-grid">
+            <div class="c-readout">
+                <span class="c-lbl">CRUISE VELOCITY</span>
+                <span id="cockpitSpeedVal" class="c-num">214 km/s</span>
+            </div>
+            <div class="c-readout">
+                <span class="c-lbl">DIST REMAINING</span>
+                <span id="cockpitDistRemainVal" class="c-num">-- Mkm</span>
+            </div>
+            <div class="c-readout">
+                <span class="c-lbl">SOL SIGNAL DELAY</span>
+                <span id="cockpitLatencyVal" class="c-num">-- min</span>
+            </div>
+            <div class="c-readout">
+                <span class="c-lbl">CORRIDOR NOISE</span>
+                <span id="cockpitNoiseVal" class="c-num">--%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Canopy HUD: Approaching Body Scanner & Interactive Leg Checklist -->
+    <div class="cockpit-side-panel right cockpit-hud-element">
+        <div class="c-panel-title">FORWARD OPTICS SCANNER</div>
+        <div class="c-scanner-card">
+            <div class="c-scan-top">
+                <span id="cockpitTargetSector" class="c-sector-tag">INNER</span>
+                <span id="cockpitTargetDist" class="c-dist-tag">78.3 Mkm</span>
+            </div>
+            <div id="cockpitTargetName" class="c-target-name">MARS COLONY</div>
+            <div id="cockpitTargetAtmo" class="c-target-meta">Atmosphere: Thin CO2</div>
+            <div id="cockpitTargetRefuel" class="c-target-refuel">REFUEL DEPOT: SCHEDULED STOP</div>
+        </div>
+
+        <div class="c-panel-title" style="margin-top: 10px;">FLIGHT PLAN (CLICK LEG TO JUMP)</div>
+        <div id="cockpitLegList" class="cockpit-leg-list">
+            <!-- Populated dynamically with clickable route legs -->
+        </div>
+    </div>
+
+    <!-- Bottom Bridge Flight Deck Console -->
+    <div class="cockpit-console">
+        <div class="console-controls">
+            <button id="btnCockpitPlayPause" class="cockpit-btn primary">PAUSE</button>
+            <button id="btnCockpitReplay" class="cockpit-btn">REPLAY</button>
+            <div class="warp-group">
+                <span class="warp-lbl">THRUST:</span>
+                <button class="cockpit-btn warp-btn" data-speed="0.5">0.5x</button>
+                <button class="cockpit-btn warp-btn active" data-speed="1">1x</button>
+                <button class="cockpit-btn warp-btn" data-speed="2">2x</button>
+                <button class="cockpit-btn warp-btn" data-speed="4">4x</button>
+            </div>
+        </div>
+
+        <div class="scrubber-wrap">
+            <input type="range" id="cockpitScrubber" min="0" max="1000" value="0">
+            <div id="cockpitMarkers" class="scrubber-markers"></div>
+        </div>
+
+        <div id="cockpitEtaLabel" class="cockpit-eta">0% // ETA --d --h</div>
     </div>
 </div>
 

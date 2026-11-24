@@ -31,15 +31,15 @@
         <div class="canvas-header">
             <div class="title-cluster">
                 <h2>SOLAR SECTOR TELEMETRY</h2>
-                <span id="simClockBadge" class="clock-badge">EPOCH: DAY 000 | LIVE ORBITS</span>
+                <span id="simClockBadge" class="clock-badge">Realtime: DAY 000 | LIVE ORBITS</span>
             </div>
             <div class="legend">
                 <button id="btnToggleOrbits" class="hud-pill active" title="Toggle Orbital Tracks">ORBITS: ON</button>
-                <button id="btnToggleMST" class="hud-pill" title="Highlight Kruskal's Minimum Spanning Tree Comms Backbone">RELAY MST: OFF</button>
+                <button id="btnToggleMST" class="hud-pill" title="Highlight Kruskal's Minimum Spanning Tree Comms Backbone">Signal Network: OFF</button>
                 <button id="btnResetView" class="hud-pill">RESET CAMERA</button>
-                <span class="legend-item"><span class="dot refuel"></span> Refuel Depot</span>
-                <span class="legend-item"><span class="dot active"></span> Active Corridor</span>
-                <span class="legend-item"><span class="dot storm"></span> Solar Hazard</span>
+                <span class="legend-item"><span class="dot refuel"></span> Refuel station</span>
+                <span class="legend-item"><span class="dot active"></span> Active Route</span>
+                <span class="legend-item"><span class="dot storm"></span> Solar storm</span>
             </div>
         </div>
 
@@ -51,7 +51,7 @@
             </div>
             <div class="hud-divider"></div>
             <div class="hud-stat">
-                <span class="hud-lbl">RAD SHIELDING</span>
+                <span class="hud-lbl">RADIATION SHIELD</span>
                 <span id="hudShieldBonus" class="hud-val">0%</span>
             </div>
             <div class="hud-divider"></div>
@@ -104,7 +104,7 @@
 
                 <div class="input-row-2col">
                     <div class="input-box">
-                        <label for="routeMode">ALGORITHM MODE</label>
+                        <label for="routeMode">ROUTE PRIORITY </label>
                         <select id="routeMode">
                             <option value="BALANCED">BALANCED (Optimal)</option>
                             <option value="FASTEST">FASTEST (Min Mkm)</option>
@@ -117,8 +117,8 @@
                     </div>
                 </div>
 
-                <button id="btnCalculate" class="btn-glow">COMPUTE OPTIMAL ROUTE</button>
-                <button id="btnOpenCockpit" class="btn-cockpit hidden">LAUNCH COCKPIT JOURNEY VIEW</button>
+                <button id="btnCalculate" class="btn-glow">FIND YOUR ROUTE</button>
+                <button id="btnOpenCockpit" class="btn-cockpit hidden">COCKPIT VIEW</button>
 
                 <!-- Telemetry Metrics Grid -->
                 <div class="metrics-section">
@@ -133,7 +133,7 @@
                             <span id="metricDuration" class="metric-value">-- d -- h</span>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-label">PROPELLANT</span>
+                            <span class="metric-label">FUEL USED</span>
                             <span id="metricFuel" class="metric-value">-- t</span>
                         </div>
                         <div class="metric-card">
@@ -162,22 +162,22 @@
 
             <!-- TAB 2: Multi-Stop Cargo Tour, Space Weather & Undo Stack -->
             <div id="tabOps" class="tab-content">
-                <h3>MULTI-STOP CARGO TOUR (TSP HEURISTIC)</h3>
+                <h3>MULTI-STOP CARGO TOUR </h3>
                 <p class="helper-text">Select multiple colonies to optimize a multi-stop supply tour:</p>
                 <div id="waypointCheckboxes" class="waypoint-grid">
                     <!-- Populated dynamically with planet checkboxes -->
                 </div>
                 <button id="btnComputeTour" class="btn-glow secondary">OPTIMIZE MULTI-STOP TOUR</button>
-                <button id="btnOpenCockpitTour" class="btn-cockpit hidden">LAUNCH COCKPIT JOURNEY VIEW</button>
+                <button id="btnOpenCockpitTour" class="btn-cockpit hidden">COCKPIT VIEW</button>
 
                 <div class="divider-line"></div>
 
-                <h3>SPACE WEATHER &amp; UNDO STACK (LIFO)</h3>
+                <h3>SPACE WEATHER </h3>
                 <p class="helper-text">Trigger a live solar storm on a corridor or click any space lane directly on the map:</p>
                 <div class="input-box">
-                    <label for="hazardEdgeSelect">TARGET SPACE CORRIDOR</label>
+                    <label for="hazardEdgeSelect">SELECT SPACE ROUTE</label>
                     <select id="hazardEdgeSelect">
-                        <option value="">Loading corridors...</option>
+                        <option value="">Loading routes...</option>
                     </select>
                 </div>
                 <div class="btn-row-2col">
@@ -189,10 +189,10 @@
             <!-- TAB 3: BST Mission Efficiency Leaderboard -->
             <div id="tabLogs" class="tab-content">
                 <div class="leaderboard-header">
-                    <h3>MISSION EFFICIENCY LOG (BST)</h3>
+                    <h3>MISSION EFFICIENCY LOG </h3>
                     <button id="btnRefreshLogs" class="mini-btn">REFRESH</button>
                 </div>
-                <p class="helper-text">Sorted automatically via Binary Search Tree from lowest budget ($) to highest:</p>
+                <p class="helper-text">Sorted automatically from lowest budget ($) to highest:</p>
                 <div id="leaderboardList" class="leaderboard-box">
                     <p class="empty-msg">No missions logged yet. Compute a route to record telemetry.</p>
                 </div>
@@ -210,7 +210,7 @@
         <div class="deck-top-bar">
             <div class="deck-title-group">
                 <span id="deckSectorBadge" class="sector-badge">INNER SYSTEM</span>
-                <h2 id="deckPlanetName">EARTH (SOL PRIME)</h2>
+                <h2 id="deckPlanetName">EARTH </h2>
                 <span id="deckPlanetId" class="id-chip">P3</span>
             </div>
             <div class="deck-quick-actions">
@@ -260,7 +260,7 @@
                     <!-- Populated dynamically with interactive purchase/equip cards -->
                 </div>
 
-                <h3>CONNECTED SPACE CORRIDORS</h3>
+                <h3>CONNECTED SPACE ROUTES</h3>
                 <div id="deckCorridorsList" class="deck-corridors-list">
                     <!-- Lists outgoing edges & live status -->
                 </div>
@@ -283,18 +283,18 @@
         <div id="cockpitFlightStatus" class="cockpit-status-pill">FUSION TORCH CRUISE // NOMINAL</div>
 
         <div class="cockpit-top-actions">
-            <button id="btnToggleCockpitHud" class="cockpit-btn">HUD: FULL</button>
+            <button id="btnToggleCockpitHud" class="cockpit-btn">DISPLAY: FULL</button>
             <button id="btnCloseCockpit" class="cockpit-btn exit">EXIT COCKPIT [ESC]</button>
         </div>
     </div>
 
     <!-- Left Canopy HUD: Live Ship & Environment Telemetry -->
     <div class="cockpit-side-panel left cockpit-hud-element">
-        <div class="c-panel-title">PROPULSION &amp; REACTOR</div>
+        <div class="c-panel-title">ENGINE &amp; FUEL STATUS</div>
 
         <div class="c-gauge-block">
             <div class="c-gauge-head">
-                <span>PROPELLANT RESERVE</span>
+                <span>FUEL RESERVE</span>
                 <span id="cockpitFuelVal" class="c-val green">600.0 / 600 t</span>
             </div>
             <div class="c-bar-track">
@@ -304,7 +304,7 @@
 
         <div class="c-gauge-block">
             <div class="c-gauge-head">
-                <span>CUMULATIVE RADIATION</span>
+                <span>RADIATION EXPOSURE</span>
                 <span id="cockpitRadVal" class="c-val amber">0.0 mSv</span>
             </div>
             <div class="c-bar-track">
@@ -334,18 +334,18 @@
 
     <!-- Right Canopy HUD: Approaching Body Scanner & Interactive Leg Checklist -->
     <div class="cockpit-side-panel right cockpit-hud-element">
-        <div class="c-panel-title">FORWARD OPTICS SCANNER</div>
+        <div class="c-panel-title">DESTINATION SCANNER</div>
         <div class="c-scanner-card">
             <div class="c-scan-top">
                 <span id="cockpitTargetSector" class="c-sector-tag">INNER</span>
                 <span id="cockpitTargetDist" class="c-dist-tag">78.3 Mkm</span>
             </div>
-            <div id="cockpitTargetName" class="c-target-name">MARS COLONY</div>
+            <div id="cockpitTargetName" class="c-target-name">MARS </div>
             <div id="cockpitTargetAtmo" class="c-target-meta">Atmosphere: Thin CO2</div>
             <div id="cockpitTargetRefuel" class="c-target-refuel">REFUEL DEPOT: SCHEDULED STOP</div>
         </div>
 
-        <div class="c-panel-title" style="margin-top: 10px;">FLIGHT PLAN (CLICK LEG TO JUMP)</div>
+        <div class="c-panel-title" style="margin-top: 10px;">FLIGHT PLAN (CLICK STAGE TO JUMP)</div>
         <div id="cockpitLegList" class="cockpit-leg-list">
             <!-- Populated dynamically with clickable route legs -->
         </div>

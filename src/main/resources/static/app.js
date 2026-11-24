@@ -805,7 +805,7 @@ function startMainLoop() {
         const clockEl = document.getElementById("simClockBadge");
         if (clockEl) {
             const simDay = Math.floor(globalTime * 12);
-            clockEl.innerText = `EPOCH: DAY ${String(simDay).padStart(3, "0")} | LIVE ORBITS`;
+            clockEl.innerText = `REAL-TIME: DAY ${String(simDay).padStart(3, "0")} | LIVE ORBITS`;
         }
 
         if (!cockpitOpen) {
